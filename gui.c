@@ -8,6 +8,18 @@
 #include "common.h"
 #include "txdialog.h"
 
+static void evt_answer(GtkButton *button, gpointer user_data) {
+  GtkNotebook *notebook = GTK_NOTEBOOK(user_data);
+  (void)button;
+
+  if (!CurrentPic.ReceivedValid || pixbuf_rx == NULL || gui.tx_panel == NULL)
+    return;
+
+  sstv_tx_panel_prepare_reply(gui.tx_panel, pixbuf_rx, CurrentPic.RemoteCall,
+                              CurrentPic.SnrDb, CurrentPic.SnrValid);
+  gtk_notebook_set_current_page(notebook, 1);
+}
+
 void createGUI() {
 
   GtkBuilder *builder;
@@ -18,6 +30,7 @@ void createGUI() {
   gtk_builder_add_from_file(builder, "aboutdialog.ui", NULL);
   
   gui.button_abort    = GTK_WIDGET(gtk_builder_get_object(builder,"button_abort"));
+  gui.button_answer   = GTK_WIDGET(gtk_builder_get_object(builder,"button_answer"));
   gui.button_browse   = GTK_WIDGET(gtk_builder_get_object(builder,"button_browse"));
   gui.button_clear    = GTK_WIDGET(gtk_builder_get_object(builder,"button_clear"));
   gui.button_start    = GTK_WIDGET(gtk_builder_get_object(builder,"button_start"));
@@ -50,6 +63,8 @@ void createGUI() {
   gui.window_main     = GTK_WIDGET(gtk_builder_get_object(builder,"window_main"));
 
   notebook = GTK_WIDGET(gtk_builder_get_object(builder,"notebook1"));
+  if (gui.button_answer != NULL)
+    gtk_widget_set_sensitive(gui.button_answer, FALSE);
   tx_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
   gtk_container_set_border_width(GTK_CONTAINER(tx_page), 12);
   gui.tx_panel = sstv_tx_panel_new(GTK_WINDOW(gui.window_main), config);
@@ -59,6 +74,8 @@ void createGUI() {
                            gtk_label_new("TX"), 1);
 
   g_signal_connect        (gui.button_abort,  "clicked",      G_CALLBACK(evt_AbortRx),       NULL);
+  if (gui.button_answer != NULL)
+    g_signal_connect(gui.button_answer, "clicked", G_CALLBACK(evt_answer), notebook);
   g_signal_connect        (gui.button_browse, "clicked",      G_CALLBACK(evt_chooseDir),     NULL);
   g_signal_connect        (gui.button_clear,  "clicked",      G_CALLBACK(evt_clearPix),      NULL);
   g_signal_connect        (gui.button_start,  "clicked",      G_CALLBACK(evt_ManualStart),   NULL);

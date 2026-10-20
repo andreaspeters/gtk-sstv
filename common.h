@@ -36,6 +36,7 @@ extern PcmData pcm;
 typedef struct _GuiObjs GuiObjs;
 struct _GuiObjs {
   GtkWidget *button_abort;
+  GtkWidget *button_answer;
   GtkWidget *button_browse;
   GtkWidget *button_clear;
 

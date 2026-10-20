@@ -29,14 +29,18 @@ typedef struct {
   GtkWidget *audio_device;
   GtkWidget *fskid_toggle;
   GtkWidget *mode_combo;
+  GtkWidget *reply_position;
   GdkPixbuf *received;
   GdkPixbuf *source;
   GKeyFile *config;
   gboolean has_received;
   gboolean changing_source;
+  gboolean reply_mode;
   gboolean playing;
   gboolean destroyed;
 } TxDialogState;
+
+static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out);
 
 typedef struct {
   GtkWidget *panel;
@@ -110,6 +114,14 @@ static void fskid_toggled(GtkToggleButton *button, gpointer user_data) {
                          gtk_toggle_button_get_active(button));
 }
 
+static void reply_position_changed(GtkComboBox *combo, gpointer user_data) {
+  TxDialogState *state = user_data;
+  const gchar *id = gtk_combo_box_get_active_id(combo);
+  if (id != NULL)
+    g_key_file_set_string(state->config, "slowrx", "tx_reply_position", id);
+  if (state->reply_mode) compose_preview(state, NULL);
+}
+
 static void mode_changed(GtkComboBox *combo, gpointer user_data) {
   TxDialogState *state = user_data;
   const gchar *id = gtk_combo_box_get_active_id(combo);
@@ -137,6 +149,7 @@ static void set_status(TxDialogState *state, const gchar *text) {
 static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) {
   GError *error = NULL;
   gchar *utc_text;
+  const gchar *position_id;
   GdkPixbuf *composed;
 
   if (state->source == NULL) {
@@ -146,11 +159,22 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
 
   utc_text = current_utc_text();
   gtk_label_set_text(GTK_LABEL(state->utc_label), utc_text);
-  composed = sstv_compose_image(state->source,
-                                entry_text(state->my_call),
-                                entry_text(state->their_call),
-                                entry_text(state->report),
-                                utc_text, message_text(state), &error);
+  if (state->reply_mode) {
+    position_id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->reply_position));
+    composed = sstv_compose_reply_image(state->source,
+                                        entry_text(state->my_call),
+                                        entry_text(state->their_call),
+                                        entry_text(state->report),
+                                        utc_text, message_text(state),
+                                        g_strcmp0(position_id, "right") == 0,
+                                        &error);
+  } else {
+    composed = sstv_compose_image(state->source,
+                                  entry_text(state->my_call),
+                                  entry_text(state->their_call),
+                                  entry_text(state->report),
+                                  utc_text, message_text(state), &error);
+  }
   g_free(utc_text);
   if (composed == NULL) {
     set_status(state, error != NULL ? error->message : "Unable to compose image.");
@@ -208,6 +232,7 @@ static void choose_photo(TxDialogState *state) {
 
   if (state->source != NULL) g_object_unref(state->source);
   state->source = loaded;
+  state->reply_mode = FALSE;
   set_status(state, "Photo loaded. Use Preview to check the composed SSTV image.");
   compose_preview(state, NULL);
 }
@@ -220,6 +245,7 @@ static void source_changed(GtkComboBox *combo, gpointer user_data) {
   if (selected == 1) {
     choose_photo(state);
   } else if (selected == 0 && state->has_received) {
+    state->reply_mode = FALSE;
     if (state->source != NULL) g_object_unref(state->source);
     state->source = g_object_ref(state->received);
     set_status(state, "Using the most recently received SSTV image.");
@@ -509,7 +535,7 @@ GtkWidget *sstv_tx_panel_new(GtkWindow *parent, GKeyFile *config) {
   TxDialogState *state;
   GtkWidget *grid, *preview_box, *button, *utc_caption;
   GtkWidget *message_entry;
-  gchar *stored_call, *stored_device, *stored_mode;
+  gchar *stored_call, *stored_device, *stored_mode, *stored_reply_position;
   int row = 0;
 
   state = g_new0(TxDialogState, 1);
@@ -555,6 +581,18 @@ GtkWidget *sstv_tx_panel_new(GtkWindow *parent, GKeyFile *config) {
   add_labeled_row(grid, "SSTV mode", state->mode_combo, row++);
   g_signal_connect(state->mode_combo, "changed", G_CALLBACK(mode_changed), state);
 
+  state->reply_position = gtk_combo_box_text_new();
+  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->reply_position), "left", "Top-left");
+  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->reply_position), "right", "Top-right");
+  stored_reply_position = g_key_file_get_string(config, "slowrx", "tx_reply_position", NULL);
+  if (stored_reply_position == NULL ||
+      !gtk_combo_box_set_active_id(GTK_COMBO_BOX(state->reply_position), stored_reply_position))
+    gtk_combo_box_set_active_id(GTK_COMBO_BOX(state->reply_position), "left");
+  g_free(stored_reply_position);
+  add_labeled_row(grid, "Reply image position", state->reply_position, row++);
+  g_signal_connect(state->reply_position, "changed",
+                   G_CALLBACK(reply_position_changed), state);
+
   stored_call = g_key_file_get_string(config, "slowrx", "tx_callsign", NULL);
   state->my_call = gtk_entry_new();
   gtk_entry_set_placeholder_text(GTK_ENTRY(state->my_call), "Your callsign");
@@ -581,6 +619,7 @@ GtkWidget *sstv_tx_panel_new(GtkWindow *parent, GKeyFile *config) {
 
   state->message = gtk_combo_box_text_new_with_entry();
   gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "TNX FER QSO");
+  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "TNX FER SSTV QSO 73");
   gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "73");
   gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "FB SIGS");
   gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "UR RST IS");
@@ -618,23 +657,21 @@ GtkWidget *sstv_tx_panel_new(GtkWindow *parent, GKeyFile *config) {
   return state->panel;
 }
 
-void sstv_tx_panel_set_received(GtkWidget *panel, GdkPixbuf *received,
-                                const char *received_call, double snr_db,
-                                gboolean snr_valid) {
-  TxDialogState *state;
+static void update_received(TxDialogState *state, GdkPixbuf *received,
+                            const char *received_call, double snr_db,
+                            gboolean snr_valid, gboolean prepare_reply) {
   GdkPixbuf *copy;
+  GtkWidget *message_entry;
   gchar *report;
   int source_index;
   gboolean use_received;
 
-  if (panel == NULL || received == NULL) return;
-  state = g_object_get_data(G_OBJECT(panel), TX_STATE_KEY);
-  if (state == NULL || state->destroyed) return;
+  if (state == NULL || received == NULL || state->destroyed) return;
   copy = gdk_pixbuf_copy(received);
   if (copy == NULL) return;
 
   source_index = gtk_combo_box_get_active(GTK_COMBO_BOX(state->source_combo));
-  use_received = source_index != 1 || state->source == NULL;
+  use_received = prepare_reply || source_index != 1 || state->source == NULL;
   if (use_received && state->source != NULL) {
     g_object_unref(state->source);
     state->source = NULL;
@@ -651,10 +688,37 @@ void sstv_tx_panel_set_received(GtkWidget *panel, GdkPixbuf *received,
   gtk_entry_set_text(GTK_ENTRY(state->report), report);
   g_free(report);
 
+  if (prepare_reply) {
+    state->reply_mode = TRUE;
+    message_entry = gtk_bin_get_child(GTK_BIN(state->message));
+    if (GTK_IS_ENTRY(message_entry))
+      gtk_entry_set_text(GTK_ENTRY(message_entry), "TNX FER SSTV QSO 73");
+  }
+
   if (use_received) {
     state->changing_source = TRUE;
     gtk_combo_box_set_active(GTK_COMBO_BOX(state->source_combo), 0);
     state->changing_source = FALSE;
   }
   compose_preview(state, NULL);
+  if (prepare_reply)
+    set_status(state, "Reply image ready. Review the preview and transmit when ready.");
+}
+
+void sstv_tx_panel_set_received(GtkWidget *panel, GdkPixbuf *received,
+                                const char *received_call, double snr_db,
+                                gboolean snr_valid) {
+  TxDialogState *state;
+  if (panel == NULL || received == NULL) return;
+  state = g_object_get_data(G_OBJECT(panel), TX_STATE_KEY);
+  update_received(state, received, received_call, snr_db, snr_valid, FALSE);
+}
+
+void sstv_tx_panel_prepare_reply(GtkWidget *panel, GdkPixbuf *received,
+                                 const char *received_call, double snr_db,
+                                 gboolean snr_valid) {
+  TxDialogState *state;
+  if (panel == NULL || received == NULL) return;
+  state = g_object_get_data(G_OBJECT(panel), TX_STATE_KEY);
+  update_received(state, received, received_call, snr_db, snr_valid, TRUE);
 }
