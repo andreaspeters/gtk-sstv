@@ -92,6 +92,19 @@ int main(void) {
     g_object_unref(large);
     return fail("custom red station text was not rendered", NULL);
   }
+  pixels = gdk_pixbuf_get_pixels(large);
+  rowstride = gdk_pixbuf_get_rowstride(large);
+  channels = gdk_pixbuf_get_n_channels(large);
+  {
+    guchar *background_sample = pixels + 120 * rowstride + 310 * channels;
+    if (abs((int)background_sample[0] - 0x40) > 2 ||
+        abs((int)background_sample[1] - 0x60) > 2 ||
+        abs((int)background_sample[2] - 0x80) > 2) {
+      g_object_unref(source);
+      g_object_unref(large);
+      return fail("multiline station text has an unwanted background", NULL);
+    }
+  }
   if (count_bright_pixels(large, IMAGE_HEIGHT - 56, IMAGE_HEIGHT) < 20) {
     g_object_unref(source);
     g_object_unref(large);

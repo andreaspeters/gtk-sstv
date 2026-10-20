@@ -19,7 +19,7 @@ static void draw_station_info(cairo_t *cr, const char *station_info,
   GdkRGBA default_color = {1.0, 1.0, 1.0, 1.0};
   const GdkRGBA *color = station_color != NULL ? station_color : &default_color;
   int available_height = footer_top - min_top;
-  int text_width, text_height, panel_height, panel_top;
+  int text_width, text_height, text_top;
 
   if (station_info == NULL || *station_info == '\0' || available_height <= 12)
     return;
@@ -40,14 +40,10 @@ static void draw_station_info(cairo_t *cr, const char *station_info,
   pango_layout_get_pixel_size(layout, &text_width, &text_height);
   (void)text_width;
   text_height = CLAMP(text_height, 1, available_height - 12);
-  panel_height = text_height + 12;
-  panel_top = footer_top - panel_height;
+  text_top = footer_top - text_height - 12;
 
-  cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.78);
-  cairo_rectangle(cr, 0, panel_top, TX_WIDTH, panel_height);
-  cairo_fill(cr);
   cairo_set_source_rgba(cr, color->red, color->green, color->blue, color->alpha);
-  cairo_move_to(cr, 10, panel_top + 6);
+  cairo_move_to(cr, 10, text_top + 6);
   pango_cairo_show_layout(cr, layout);
 
   pango_font_description_free(font);
