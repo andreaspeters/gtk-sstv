@@ -23,6 +23,9 @@ typedef struct {
   GtkWidget *their_call;
   GtkWidget *report;
   GtkWidget *message;
+  GtkWidget *station_info;
+  GtkWidget *station_font_size;
+  GtkWidget *station_color;
   GtkWidget *utc_label;
   GtkWidget *status;
   GtkWidget *send_button;
@@ -135,6 +138,49 @@ static const gchar *message_text(TxDialogState *state) {
   return (entry != NULL) ? gtk_entry_get_text(GTK_ENTRY(entry)) : "";
 }
 
+static gchar *station_info_text(TxDialogState *state) {
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->station_info));
+  GtkTextIter start, end;
+  gtk_text_buffer_get_bounds(buffer, &start, &end);
+  return gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+}
+
+static void message_changed(GtkEditable *editable, gpointer user_data) {
+  TxDialogState *state = user_data;
+  g_key_file_set_string(state->config, "slowrx", "tx_message",
+                        gtk_entry_get_text(GTK_ENTRY(editable)));
+  if (state->source != NULL) compose_preview(state, NULL);
+}
+
+static void station_info_changed(GtkTextBuffer *buffer, gpointer user_data) {
+  TxDialogState *state = user_data;
+  GtkTextIter start, end;
+  gchar *text;
+  gtk_text_buffer_get_bounds(buffer, &start, &end);
+  text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+  g_key_file_set_string(state->config, "slowrx", "tx_station_info", text);
+  g_free(text);
+  if (state->source != NULL) compose_preview(state, NULL);
+}
+
+static void station_font_size_changed(GtkSpinButton *button, gpointer user_data) {
+  TxDialogState *state = user_data;
+  g_key_file_set_integer(state->config, "slowrx", "tx_station_font_size",
+                         gtk_spin_button_get_value_as_int(button));
+  if (state->source != NULL) compose_preview(state, NULL);
+}
+
+static void station_color_set(GtkColorButton *button, gpointer user_data) {
+  TxDialogState *state = user_data;
+  GdkRGBA color;
+  gchar *color_text;
+  gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(button), &color);
+  color_text = gdk_rgba_to_string(&color);
+  g_key_file_set_string(state->config, "slowrx", "tx_station_font_color", color_text);
+  g_free(color_text);
+  if (state->source != NULL) compose_preview(state, NULL);
+}
+
 static gchar *current_utc_text(void) {
   GDateTime *now = g_date_time_new_now_utc();
   gchar *text = g_date_time_format(now, "%Y-%m-%d %H:%M UTC");
@@ -149,8 +195,11 @@ static void set_status(TxDialogState *state, const gchar *text) {
 static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) {
   GError *error = NULL;
   gchar *utc_text;
+  gchar *station_text;
   const gchar *position_id;
   GdkPixbuf *composed;
+  GdkRGBA station_color;
+  guint station_font_size;
 
   if (state->source == NULL) {
     set_status(state, "Choose a received picture or photo first.");
@@ -158,6 +207,11 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
   }
 
   utc_text = current_utc_text();
+  station_text = station_info_text(state);
+  station_font_size = (guint)gtk_spin_button_get_value_as_int(
+      GTK_SPIN_BUTTON(state->station_font_size));
+  gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(state->station_color),
+                             &station_color);
   gtk_label_set_text(GTK_LABEL(state->utc_label), utc_text);
   if (state->reply_mode) {
     position_id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->reply_position));
@@ -166,6 +220,8 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
                                         entry_text(state->their_call),
                                         entry_text(state->report),
                                         utc_text, message_text(state),
+                                        station_text, station_font_size,
+                                        &station_color,
                                         g_strcmp0(position_id, "right") == 0,
                                         &error);
   } else {
@@ -173,9 +229,11 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
                                   entry_text(state->my_call),
                                   entry_text(state->their_call),
                                   entry_text(state->report),
-                                  utc_text, message_text(state), &error);
+                                  utc_text, message_text(state), station_text,
+                                  station_font_size, &station_color, &error);
   }
   g_free(utc_text);
+  g_free(station_text);
   if (composed == NULL) {
     set_status(state, error != NULL ? error->message : "Unable to compose image.");
     if (error != NULL) g_error_free(error);
@@ -534,8 +592,11 @@ static GtkWidget *add_labeled_row(GtkWidget *grid, const gchar *label,
 GtkWidget *sstv_tx_panel_new(GtkWindow *parent, GKeyFile *config) {
   TxDialogState *state;
   GtkWidget *grid, *preview_box, *button, *utc_caption;
-  GtkWidget *message_entry;
+  GtkWidget *message_entry, *station_scroll, *station_style, *size_label, *color_label;
   gchar *stored_call, *stored_device, *stored_mode, *stored_reply_position;
+  gchar *stored_message, *stored_station_info, *stored_font_color;
+  gint stored_font_size;
+  GdkRGBA station_color;
   int row = 0;
 
   state = g_new0(TxDialogState, 1);
@@ -625,8 +686,52 @@ GtkWidget *sstv_tx_panel_new(GtkWindow *parent, GKeyFile *config) {
   gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "UR RST IS");
   gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "CQ CQ CQ");
   message_entry = gtk_bin_get_child(GTK_BIN(state->message));
-  gtk_entry_set_text(GTK_ENTRY(message_entry), "TNX FER QSO");
+  stored_message = g_key_file_get_string(config, "slowrx", "tx_message", NULL);
+  gtk_entry_set_text(GTK_ENTRY(message_entry),
+                     stored_message != NULL ? stored_message : "TNX FER QSO");
+  g_free(stored_message);
   add_labeled_row(grid, "Text / reply", state->message, row++);
+  g_signal_connect(message_entry, "changed", G_CALLBACK(message_changed), state);
+
+  state->station_info = gtk_text_view_new();
+  gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(state->station_info), GTK_WRAP_WORD_CHAR);
+  gtk_widget_set_size_request(state->station_info, 260, 78);
+  station_scroll = gtk_scrolled_window_new(NULL, NULL);
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(station_scroll),
+                                 GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+  gtk_container_add(GTK_CONTAINER(station_scroll), state->station_info);
+  stored_station_info = g_key_file_get_string(config, "slowrx", "tx_station_info", NULL);
+  gtk_text_buffer_set_text(
+      gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->station_info)),
+      stored_station_info != NULL ? stored_station_info : "", -1);
+  g_free(stored_station_info);
+  add_labeled_row(grid, "Station information (multi-line)", station_scroll, row++);
+  g_signal_connect(gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->station_info)),
+                   "changed", G_CALLBACK(station_info_changed), state);
+
+  stored_font_size = g_key_file_get_integer(config, "slowrx", "tx_station_font_size", NULL);
+  if (stored_font_size < 8 || stored_font_size > 28) stored_font_size = 14;
+  state->station_font_size = gtk_spin_button_new_with_range(8, 28, 1);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(state->station_font_size), stored_font_size);
+
+  stored_font_color = g_key_file_get_string(config, "slowrx", "tx_station_font_color", NULL);
+  if (stored_font_color == NULL || !gdk_rgba_parse(&station_color, stored_font_color))
+    gdk_rgba_parse(&station_color, "#ffffff");
+  g_free(stored_font_color);
+  state->station_color = gtk_color_button_new_with_rgba(&station_color);
+
+  station_style = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  size_label = gtk_label_new("Size (pt)");
+  color_label = gtk_label_new("Color");
+  gtk_box_pack_start(GTK_BOX(station_style), size_label, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(station_style), state->station_font_size, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(station_style), color_label, FALSE, FALSE, 4);
+  gtk_box_pack_start(GTK_BOX(station_style), state->station_color, FALSE, FALSE, 0);
+  add_labeled_row(grid, "Station text style", station_style, row++);
+  g_signal_connect(state->station_font_size, "value-changed",
+                   G_CALLBACK(station_font_size_changed), state);
+  g_signal_connect(state->station_color, "color-set",
+                   G_CALLBACK(station_color_set), state);
 
   utc_caption = gtk_label_new("");
   state->utc_label = utc_caption;
@@ -689,10 +794,16 @@ static void update_received(TxDialogState *state, GdkPixbuf *received,
   g_free(report);
 
   if (prepare_reply) {
+    gchar *configured_message;
     state->reply_mode = TRUE;
     message_entry = gtk_bin_get_child(GTK_BIN(state->message));
+    configured_message = g_key_file_get_string(state->config, "slowrx",
+                                                "tx_message", NULL);
     if (GTK_IS_ENTRY(message_entry))
-      gtk_entry_set_text(GTK_ENTRY(message_entry), "TNX FER SSTV QSO 73");
+      gtk_entry_set_text(GTK_ENTRY(message_entry),
+                         configured_message != NULL ? configured_message
+                                                    : "TNX FER SSTV QSO 73");
+    g_free(configured_message);
   }
 
   if (use_received) {

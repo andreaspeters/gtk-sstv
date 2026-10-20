@@ -11,9 +11,54 @@
 #define THUMB_HEIGHT 80
 #define THUMB_MARGIN 8
 
+static void draw_station_info(cairo_t *cr, const char *station_info,
+                              guint font_size, const GdkRGBA *station_color,
+                              int footer_top, int min_top) {
+  PangoLayout *layout;
+  PangoFontDescription *font;
+  GdkRGBA default_color = {1.0, 1.0, 1.0, 1.0};
+  const GdkRGBA *color = station_color != NULL ? station_color : &default_color;
+  int available_height = footer_top - min_top;
+  int text_width, text_height, panel_height, panel_top;
+
+  if (station_info == NULL || *station_info == '\0' || available_height <= 12)
+    return;
+
+  font_size = CLAMP(font_size, 8, 28);
+  layout = pango_cairo_create_layout(cr);
+  font = pango_font_description_new();
+  pango_font_description_set_family(font, "Sans");
+  pango_font_description_set_weight(font, PANGO_WEIGHT_BOLD);
+  pango_font_description_set_size(font, (int)font_size * PANGO_SCALE);
+  pango_layout_set_font_description(layout, font);
+  pango_layout_set_width(layout, (TX_WIDTH - 20) * PANGO_SCALE);
+  pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+  pango_layout_set_single_paragraph_mode(layout, FALSE);
+  pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+  pango_layout_set_height(layout, -(available_height - 12) * PANGO_SCALE);
+  pango_layout_set_text(layout, station_info, -1);
+  pango_layout_get_pixel_size(layout, &text_width, &text_height);
+  (void)text_width;
+  text_height = CLAMP(text_height, 1, available_height - 12);
+  panel_height = text_height + 12;
+  panel_top = footer_top - panel_height;
+
+  cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.78);
+  cairo_rectangle(cr, 0, panel_top, TX_WIDTH, panel_height);
+  cairo_fill(cr);
+  cairo_set_source_rgba(cr, color->red, color->green, color->blue, color->alpha);
+  cairo_move_to(cr, 10, panel_top + 6);
+  pango_cairo_show_layout(cr, layout);
+
+  pango_font_description_free(font);
+  g_object_unref(layout);
+}
+
 GdkPixbuf *sstv_compose_image(GdkPixbuf *source, const char *my_call,
                               const char *their_call, const char *report,
                               const char *utc_text, const char *message,
+                              const char *station_info, guint station_font_size,
+                              const GdkRGBA *station_color,
                               GError **error) {
   GdkPixbuf *scaled, *result;
   cairo_surface_t *surface;
@@ -47,6 +92,8 @@ GdkPixbuf *sstv_compose_image(GdkPixbuf *source, const char *my_call,
   cr = cairo_create(surface);
   gdk_cairo_set_source_pixbuf(cr, scaled, 0, 0);
   cairo_paint(cr);
+  draw_station_info(cr, station_info, station_font_size, station_color,
+                    TX_HEIGHT - FOOTER_HEIGHT, 0);
   cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.78);
   cairo_rectangle(cr, 0, TX_HEIGHT - FOOTER_HEIGHT, TX_WIDTH, FOOTER_HEIGHT);
   cairo_fill(cr);
@@ -88,6 +135,8 @@ GdkPixbuf *sstv_compose_image(GdkPixbuf *source, const char *my_call,
 GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, const char *my_call,
                                     const char *their_call, const char *report,
                                     const char *utc_text, const char *message,
+                                    const char *station_info, guint station_font_size,
+                                    const GdkRGBA *station_color,
                                     gboolean image_right, GError **error) {
   GdkPixbuf *scaled, *result;
   cairo_surface_t *surface;
@@ -134,6 +183,10 @@ GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, const char *my_call,
   cairo_fill(cr);
   gdk_cairo_set_source_pixbuf(cr, scaled, thumb_x, thumb_y);
   cairo_paint(cr);
+
+  draw_station_info(cr, station_info, station_font_size, station_color,
+                    TX_HEIGHT - FOOTER_HEIGHT,
+                    THUMB_MARGIN + THUMB_HEIGHT + THUMB_MARGIN);
 
   // Draw footer with same layout as sstv_compose_image
   cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.78);

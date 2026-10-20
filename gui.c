@@ -97,7 +97,7 @@ static void evt_log_adif(GtkButton *button, gpointer user_data) {
 void createGUI() {
 
   GtkBuilder *builder;
-  GtkWidget  *notebook, *tx_page;
+  GtkWidget  *notebook, *tx_page, *tx_scrolled;
 
   builder = gtk_builder_new();
   gtk_builder_add_from_file(builder, "slowrx.ui",      NULL);
@@ -145,8 +145,12 @@ void createGUI() {
   tx_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
   gtk_container_set_border_width(GTK_CONTAINER(tx_page), 12);
   gui.tx_panel = sstv_tx_panel_new(GTK_WINDOW(gui.window_main), config);
-  gtk_box_pack_start(GTK_BOX(tx_page), gui.tx_panel, TRUE, TRUE, 0);
-  // Embeds the SSTV transmit control panel directly in the TX tab
+  tx_scrolled = gtk_scrolled_window_new(NULL, NULL);
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(tx_scrolled),
+                                 GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_container_add(GTK_CONTAINER(tx_scrolled), gui.tx_panel);
+  gtk_box_pack_start(GTK_BOX(tx_page), tx_scrolled, TRUE, TRUE, 0);
+  // Keep the complete TX controls reachable within the fixed-size main window.
   gtk_notebook_insert_page(GTK_NOTEBOOK(notebook), tx_page,
                            gtk_label_new("TX"), 1);
 
