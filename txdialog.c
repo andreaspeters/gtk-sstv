@@ -63,30 +63,23 @@ static SstvMode selected_mode(TxDialogState *state) {
 }
 
 static void populate_audio_devices(GtkWidget *combo, const gchar *saved_device) {
-  void **hints = NULL;
-  int i;
+  int card = -1;
+  int status;
 
-  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), "default", "Default ALSA output");
-  if (snd_device_name_hint(-1, "pcm", &hints) >= 0 && hints != NULL) {
-    for (i = 0; hints[i] != NULL; ++i) {
-      char *name = snd_device_name_get_hint(hints[i], "NAME");
-      char *description = snd_device_name_get_hint(hints[i], "DESC");
-      char *ioid = snd_device_name_get_hint(hints[i], "IOID");
-      if (name != NULL && strcmp(name, "default") != 0 &&
-          (ioid == NULL || strcmp(ioid, "Output") == 0)) {
-        gchar **lines = description != NULL ? g_strsplit(description, "\n", 2) : NULL;
-        gchar *label = (lines != NULL && lines[0][0] != '\0')
-                         ? g_strdup_printf("%s — %s", name, lines[0])
-                         : g_strdup(name);
-        gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), name, label);
-        g_free(label);
-        if (lines != NULL) g_strfreev(lines);
-      }
-      free(name);
-      free(description);
-      free(ioid);
+  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), "default", "default");
+  while ((status = snd_card_next(&card)) >= 0 && card != -1) {
+    char *cardname = NULL;
+    gchar *playback_device;
+
+    if (snd_card_get_name(card, &cardname) < 0 || cardname == NULL) {
+      free(cardname);
+      continue;
     }
-    snd_device_name_free_hint(hints);
+
+    playback_device = g_strdup_printf("plughw:%d", card);
+    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), playback_device, cardname);
+    g_free(playback_device);
+    free(cardname);
   }
 
   if (saved_device == NULL ||
