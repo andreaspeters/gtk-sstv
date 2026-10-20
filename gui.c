@@ -7,6 +7,10 @@
 
 #include "common.h"
 #include "txdialog.h"
+#include "adifudp.h"
+
+#define ADIF_UDP_HOST "127.0.0.1"
+#define ADIF_UDP_PORT 2333
 
 static void evt_answer(GtkButton *button, gpointer user_data) {
   GtkNotebook *notebook = GTK_NOTEBOOK(user_data);
@@ -20,6 +24,76 @@ static void evt_answer(GtkButton *button, gpointer user_data) {
   gtk_notebook_set_current_page(notebook, 1);
 }
 
+static void qso_timestamp(gchar **qso_date, gchar **time_on) {
+  const gchar *stamp = CurrentPic.timestr;
+  gboolean valid = stamp != NULL && strlen(stamp) >= 15 && stamp[8] == '-';
+  guint i;
+
+  if (valid) {
+    for (i = 0; i < 8; ++i)
+      if (!g_ascii_isdigit(stamp[i])) valid = FALSE;
+    for (i = 9; i < 15; ++i)
+      if (!g_ascii_isdigit(stamp[i])) valid = FALSE;
+  }
+  if (valid) {
+    *qso_date = g_strndup(stamp, 8);
+    *time_on = g_strndup(stamp + 9, 6);
+  } else {
+    GDateTime *now = g_date_time_new_now_utc();
+    *qso_date = g_date_time_format(now, "%Y%m%d");
+    *time_on = g_date_time_format(now, "%H%M%S");
+    g_date_time_unref(now);
+  }
+}
+
+static void evt_log_adif(GtkButton *button, gpointer user_data) {
+  gchar *qso_date, *time_on, *station_call, *comment, *record, *status;
+  GError *error = NULL;
+  (void)button;
+  (void)user_data;
+
+  if (!CurrentPic.ReceivedValid || CurrentPic.RemoteCall[0] == '\0') {
+    gtk_statusbar_push(GTK_STATUSBAR(gui.statusbar), 0,
+                       "Cannot log: no valid received SSTV callsign is available.");
+    return;
+  }
+
+  qso_timestamp(&qso_date, &time_on);
+  station_call = g_key_file_get_string(config, "slowrx", "tx_callsign", NULL);
+  if (CurrentPic.SnrValid && isfinite(CurrentPic.SnrDb))
+    comment = g_strdup_printf("SSTV mode %s; RX SNR %+.1f dB",
+                              ModeSpec[CurrentPic.Mode].Name, CurrentPic.SnrDb);
+  else
+    comment = g_strdup_printf("SSTV mode %s; RX SNR unavailable",
+                              ModeSpec[CurrentPic.Mode].Name);
+
+  record = adif_build_sstv_record(CurrentPic.RemoteCall, station_call,
+                                  qso_date, time_on, comment, &error);
+  g_free(qso_date);
+  g_free(time_on);
+  g_free(station_call);
+  g_free(comment);
+  if (record == NULL) {
+    gtk_statusbar_push(GTK_STATUSBAR(gui.statusbar), 0,
+                       error != NULL ? error->message : "Unable to build ADIF record.");
+    g_clear_error(&error);
+    return;
+  }
+
+  if (!adif_udp_send(ADIF_UDP_HOST, ADIF_UDP_PORT, record, &error)) {
+    gtk_statusbar_push(GTK_STATUSBAR(gui.statusbar), 0,
+                       error != NULL ? error->message : "ADIF UDP send failed.");
+    g_clear_error(&error);
+    g_free(record);
+    return;
+  }
+  status = g_strdup_printf("ADIF QSO datagram sent to %s:%u (UDP has no delivery acknowledgement).",
+                           ADIF_UDP_HOST, ADIF_UDP_PORT);
+  gtk_statusbar_push(GTK_STATUSBAR(gui.statusbar), 0, status);
+  g_free(status);
+  g_free(record);
+}
+
 void createGUI() {
 
   GtkBuilder *builder;
@@ -30,6 +104,7 @@ void createGUI() {
   gtk_builder_add_from_file(builder, "aboutdialog.ui", NULL);
   
   gui.button_abort    = GTK_WIDGET(gtk_builder_get_object(builder,"button_abort"));
+  gui.button_adif     = GTK_WIDGET(gtk_builder_get_object(builder,"button_adif"));
   gui.button_answer   = GTK_WIDGET(gtk_builder_get_object(builder,"button_answer"));
   gui.button_browse   = GTK_WIDGET(gtk_builder_get_object(builder,"button_browse"));
   gui.button_clear    = GTK_WIDGET(gtk_builder_get_object(builder,"button_clear"));
@@ -65,6 +140,8 @@ void createGUI() {
   notebook = GTK_WIDGET(gtk_builder_get_object(builder,"notebook1"));
   if (gui.button_answer != NULL)
     gtk_widget_set_sensitive(gui.button_answer, FALSE);
+  if (gui.button_adif != NULL)
+    gtk_widget_set_sensitive(gui.button_adif, FALSE);
   tx_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
   gtk_container_set_border_width(GTK_CONTAINER(tx_page), 12);
   gui.tx_panel = sstv_tx_panel_new(GTK_WINDOW(gui.window_main), config);
@@ -76,6 +153,8 @@ void createGUI() {
   g_signal_connect        (gui.button_abort,  "clicked",      G_CALLBACK(evt_AbortRx),       NULL);
   if (gui.button_answer != NULL)
     g_signal_connect(gui.button_answer, "clicked", G_CALLBACK(evt_answer), notebook);
+  if (gui.button_adif != NULL)
+    g_signal_connect(gui.button_adif, "clicked", G_CALLBACK(evt_log_adif), NULL);
   g_signal_connect        (gui.button_browse, "clicked",      G_CALLBACK(evt_chooseDir),     NULL);
   g_signal_connect        (gui.button_clear,  "clicked",      G_CALLBACK(evt_clearPix),      NULL);
   g_signal_connect        (gui.button_start,  "clicked",      G_CALLBACK(evt_ManualStart),   NULL);

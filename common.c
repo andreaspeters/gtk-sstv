@@ -161,6 +161,8 @@ void evt_clearPix() {
   CurrentPic.RemoteCall[0] = '\0';
   if (gui.button_answer != NULL)
     gtk_widget_set_sensitive(gui.button_answer, FALSE);
+  if (gui.button_adif != NULL)
+    gtk_widget_set_sensitive(gui.button_adif, FALSE);
   gdk_pixbuf_fill (pixbuf_disp, 0);
   gtk_image_set_from_pixbuf(GTK_IMAGE(gui.image_rx), pixbuf_disp);
   gtk_label_set_markup (GTK_LABEL(gui.label_fskid), "");

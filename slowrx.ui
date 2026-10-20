@@ -336,9 +336,6 @@
                                         <child>
                                           <object class="GtkButton" id="button_adif">
                                             <property name="label">Logging</property>
-                                            <child>
-                                              <object class="GtkButton"/>
-                                            </child>
                                           </object>
                                         </child>
                                       </object>

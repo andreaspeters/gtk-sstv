@@ -6,7 +6,7 @@ GTKLIBS   = `pkg-config --libs gtk+-3.0`
 
 OFLAGS = -O3
 
-OBJECTS = common.o modespec.o gui.o video.o vis.o sync.o pcm.o fsk.o slowrx.o encoder.o compose.o txaudio.o txdialog.o
+OBJECTS = common.o modespec.o gui.o video.o vis.o sync.o pcm.o fsk.o slowrx.o encoder.o compose.o txaudio.o txdialog.o adifudp.o
 
 all: slowrx
 
@@ -27,6 +27,17 @@ txaudio.o: txaudio.c txaudio.h
 
 txdialog.o: txdialog.c txdialog.h compose.h encoder.h txaudio.h
 	$(CC) $(CFLAGS) $(GTKCFLAGS) $(OFLAGS) -c -o $@ $<
+
+adifudp.o: adifudp.c adifudp.h
+	$(CC) $(CFLAGS) $(GTKCFLAGS) $(OFLAGS) -c -o $@ $<
+
+TEST_BUILD_DIR ?= /data/build-nix
+.PHONY: test-adifudp
+test-adifudp:
+	@mkdir -p "$(TEST_BUILD_DIR)"
+	$(CC) $(CFLAGS) $(GTKCFLAGS) -I. -o "$(TEST_BUILD_DIR)/test_adifudp" \
+	  test_adifudp.c adifudp.c $(GTKLIBS) -lm
+	"$(TEST_BUILD_DIR)/test_adifudp"
 
 .PHONY: test-encoder
 test-encoder:

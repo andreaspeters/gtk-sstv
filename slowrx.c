@@ -110,6 +110,8 @@ void *Listen() {
     gtk_widget_set_sensitive (gui.button_clear, FALSE);
     if (gui.button_answer != NULL)
       gtk_widget_set_sensitive(gui.button_answer, FALSE);
+    if (gui.button_adif != NULL)
+      gtk_widget_set_sensitive(gui.button_adif, FALSE);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON(gui.tog_setedge), FALSE);
     gtk_statusbar_push       (GTK_STATUSBAR(gui.statusbar), 0, "Receiving video..." );
     gtk_label_set_markup     (GTK_LABEL(gui.label_lastmode), ModeSpec[CurrentPic.Mode].Name);
@@ -171,6 +173,9 @@ void *Listen() {
     }
     if (gui.button_answer != NULL)
       gtk_widget_set_sensitive(gui.button_answer, CurrentPic.ReceivedValid);
+    if (gui.button_adif != NULL)
+      gtk_widget_set_sensitive(gui.button_adif,
+                               CurrentPic.ReceivedValid && CurrentPic.RemoteCall[0] != '\0');
     gdk_threads_leave                  ();
 
     // Save PNG
