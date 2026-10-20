@@ -21,6 +21,66 @@
 #include "common.h"
 #include "txdialog.h"
 
+typedef struct {
+  GdkPixbuf *thumbnail;
+  GdkPixbuf *received;
+  GtkWidget *tx_panel;
+  gchar *id;
+  gchar *callsign;
+  double snr_db;
+  gboolean received_valid;
+  gboolean snr_valid;
+} ReceiveUiUpdate;
+
+static gboolean apply_receive_ui_update(gpointer data) {
+  ReceiveUiUpdate *update = data;
+
+  if (savedstore != NULL && update->thumbnail != NULL) {
+    GtkStringObject *item = gtk_string_object_new(
+        update->id != NULL ? update->id : "");
+    GdkTexture *texture = gui_texture_new_from_pixbuf(update->thumbnail);
+    if (texture != NULL)
+      g_object_set_data_full(G_OBJECT(item), "slowrx-thumbnail", texture,
+                             g_object_unref);
+    g_list_store_insert(savedstore, 0, item);
+    g_object_unref(item);
+  }
+  if (update->received_valid && update->tx_panel != NULL &&
+      update->received != NULL) {
+    sstv_tx_panel_set_received(update->tx_panel, update->received,
+                               update->callsign, update->snr_db,
+                               update->snr_valid);
+  }
+  if (gui.button_answer != NULL)
+    gtk_widget_set_sensitive(gui.button_answer, update->received_valid);
+  if (gui.button_adif != NULL)
+    gtk_widget_set_sensitive(gui.button_adif,
+                             update->received_valid && update->callsign[0] != '\0');
+
+  g_clear_object(&update->thumbnail);
+  g_clear_object(&update->received);
+  g_clear_object(&update->tx_panel);
+  g_free(update->id);
+  g_free(update->callsign);
+  g_free(update);
+  return G_SOURCE_REMOVE;
+}
+
+static void queue_receive_ui_update(const gchar *id) {
+  ReceiveUiUpdate *update = g_new0(ReceiveUiUpdate, 1);
+  update->thumbnail = CurrentPic.thumbbuf != NULL
+      ? g_object_ref(CurrentPic.thumbbuf) : NULL;
+  update->received = CurrentPic.ReceivedValid && pixbuf_rx != NULL
+      ? g_object_ref(pixbuf_rx) : NULL;
+  update->tx_panel = gui.tx_panel != NULL ? g_object_ref(gui.tx_panel) : NULL;
+  update->id = g_strdup(id != NULL ? id : "");
+  update->callsign = g_strdup(CurrentPic.RemoteCall);
+  update->snr_db = CurrentPic.SnrDb;
+  update->received_valid = CurrentPic.ReceivedValid;
+  update->snr_valid = CurrentPic.SnrValid;
+  g_main_context_invoke(NULL, apply_receive_ui_update, update);
+}
+
 // The thread that listens to VIS headers and calls decoders etc
 void *Listen() {
 
@@ -35,11 +95,12 @@ void *Listen() {
 
   while (TRUE) {
 
-    gdk_threads_enter        ();
-    gtk_widget_set_sensitive (gui.grid_vu,      TRUE);
-    gtk_widget_set_sensitive (gui.button_abort, FALSE);
-    gtk_widget_set_sensitive (gui.button_clear, TRUE);
-    gdk_threads_leave        ();
+    if (g_atomic_int_get(&ApplicationStopping))
+      return NULL;
+
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.grid_vu, NULL, NULL, 0, 0, TRUE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.button_abort, NULL, NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.button_clear, NULL, NULL, 0, 0, TRUE);
 
     pcm.WindowPtr = 0;
     snd_pcm_prepare(pcm.handle);
@@ -51,6 +112,9 @@ void *Listen() {
       // Wait for VIS
       Mode = GetVIS();
 
+      if (g_atomic_int_get(&ApplicationStopping))
+        return NULL;
+
       // Stop listening on ALSA error
       if (Abort) pthread_exit(NULL);
 
@@ -60,7 +124,7 @@ void *Listen() {
         snd_pcm_drop(pcm.handle);
         printf("getvideo at %.2f skip %d\n",CurrentPic.Rate,CurrentPic.Skip);
         GetVideo(CurrentPic.Mode, CurrentPic.Rate, CurrentPic.Skip, TRUE);
-        if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON(gui.tog_save)))
+        if (gui_option_get_toggle(GUI_OPTION_SAVE))
           saveCurrentPic();
         pcm.WindowPtr = 0;
         snd_pcm_prepare(pcm.handle);
@@ -101,55 +165,48 @@ void *Listen() {
   
     // Get video
     strftime(rctime,  sizeof(rctime)-1, "%H:%Mz", timeptr);
-    gdk_threads_enter        ();
-    gtk_label_set_text       (GTK_LABEL(gui.label_fskid), "");
-    gtk_widget_set_sensitive (gui.frame_manual, FALSE);
-    gtk_widget_set_sensitive (gui.frame_slant,  FALSE);
-    gtk_widget_set_sensitive (gui.combo_card,   FALSE);
-    gtk_widget_set_sensitive (gui.button_abort, TRUE);
-    gtk_widget_set_sensitive (gui.button_clear, FALSE);
+    gui_dispatch(GUI_ACTION_LABEL_TEXT, gui.label_fskid, "", NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.frame_manual, NULL, NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.frame_slant, NULL, NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.combo_card, NULL, NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.button_abort, NULL, NULL, 0, 0, TRUE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.button_clear, NULL, NULL, 0, 0, FALSE);
     if (gui.button_answer != NULL)
-      gtk_widget_set_sensitive(gui.button_answer, FALSE);
+      gui_dispatch(GUI_ACTION_SENSITIVE, gui.button_answer, NULL, NULL, 0, 0, FALSE);
     if (gui.button_adif != NULL)
-      gtk_widget_set_sensitive(gui.button_adif, FALSE);
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON(gui.tog_setedge), FALSE);
-    gtk_statusbar_push       (GTK_STATUSBAR(gui.statusbar), 0, "Receiving video..." );
-    gtk_label_set_markup     (GTK_LABEL(gui.label_lastmode), ModeSpec[CurrentPic.Mode].Name);
-    gtk_label_set_markup     (GTK_LABEL(gui.label_utc), rctime);
-    gdk_threads_leave        ();
+      gui_dispatch(GUI_ACTION_SENSITIVE, gui.button_adif, NULL, NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_TOGGLE_ACTIVE, gui.tog_setedge, NULL, NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_STATUS, gui.statusbar, "Receiving video...", NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_LABEL_MARKUP, gui.label_lastmode,
+                 ModeSpec[CurrentPic.Mode].Name, NULL, 0, 0, FALSE);
+    gui_dispatch(GUI_ACTION_LABEL_MARKUP, gui.label_utc, rctime, NULL, 0, 0, FALSE);
     printf("  getvideo @ %.1f Hz, Skip %d, HedrShift %+d Hz\n", 44100.0, 0, CurrentPic.HedrShift);
 
     Finished = GetVideo(CurrentPic.Mode, 44100, 0, FALSE);
     CurrentPic.ReceivedValid = Finished;
 
-    gdk_threads_enter        ();
-    gtk_widget_set_sensitive (gui.button_abort, FALSE);
-    gdk_threads_leave        ();
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.button_abort, NULL, NULL, 0, 0, FALSE);
     
     id[0] = '\0';
 
-    if (Finished && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(gui.tog_fsk))) {
-      gdk_threads_enter  ();
-      gtk_statusbar_push (GTK_STATUSBAR(gui.statusbar), 0, "Receiving FSK ID..." );
-      gdk_threads_leave  ();
+    if (Finished && gui_option_get_toggle(GUI_OPTION_FSK)) {
+      gui_dispatch(GUI_ACTION_STATUS, gui.statusbar, "Receiving FSK ID...",
+                   NULL, 0, 0, FALSE);
       GetFSK(id);
       g_strlcpy(CurrentPic.RemoteCall, id, sizeof(CurrentPic.RemoteCall));
       printf("  FSKID \"%s\"\n",id);
-      gdk_threads_enter  ();
-      gtk_label_set_text (GTK_LABEL(gui.label_fskid), id);
-      gdk_threads_leave  ();
+      gui_dispatch(GUI_ACTION_LABEL_TEXT, gui.label_fskid, id, NULL, 0, 0, FALSE);
     }
 
     snd_pcm_drop(pcm.handle);
 
-    if (Finished && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(gui.tog_slant))) {
+    if (Finished && gui_option_get_toggle(GUI_OPTION_SLANT)) {
 
       // Fix slant
       //setVU(0,6);
-      gdk_threads_enter        ();
-      gtk_statusbar_push       (GTK_STATUSBAR(gui.statusbar), 0, "Calculating slant..." );
-      gtk_widget_set_sensitive (gui.grid_vu, FALSE);
-      gdk_threads_leave        ();
+      gui_dispatch(GUI_ACTION_STATUS, gui.statusbar, "Calculating slant...",
+                   NULL, 0, 0, FALSE);
+      gui_dispatch(GUI_ACTION_SENSITIVE, gui.grid_vu, NULL, NULL, 0, 0, FALSE);
       printf("  FindSync @ %.1f Hz\n",CurrentPic.Rate);
       CurrentPic.Rate = FindSync(CurrentPic.Mode, CurrentPic.Rate, &CurrentPic.Skip);
    
@@ -164,22 +221,10 @@ void *Listen() {
     // Add thumbnail to iconview
     CurrentPic.thumbbuf = gdk_pixbuf_scale_simple (pixbuf_rx, 100,
         100.0/ModeSpec[CurrentPic.Mode].ImgWidth * ModeSpec[CurrentPic.Mode].NumLines * ModeSpec[CurrentPic.Mode].LineHeight, GDK_INTERP_HYPER);
-    gdk_threads_enter                  ();
-    gtk_list_store_prepend             (savedstore, &iter);
-    gtk_list_store_set                 (savedstore, &iter, 0, CurrentPic.thumbbuf, 1, id, -1);
-    if (CurrentPic.ReceivedValid && gui.tx_panel != NULL && pixbuf_rx != NULL) {
-      sstv_tx_panel_set_received(gui.tx_panel, pixbuf_rx, CurrentPic.RemoteCall,
-                                 CurrentPic.SnrDb, CurrentPic.SnrValid);
-    }
-    if (gui.button_answer != NULL)
-      gtk_widget_set_sensitive(gui.button_answer, CurrentPic.ReceivedValid);
-    if (gui.button_adif != NULL)
-      gtk_widget_set_sensitive(gui.button_adif,
-                               CurrentPic.ReceivedValid && CurrentPic.RemoteCall[0] != '\0');
-    gdk_threads_leave                  ();
+    queue_receive_ui_update(id);
 
     // Save PNG
-    if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON(gui.tog_save))) {
+    if (gui_option_get_toggle(GUI_OPTION_SAVE)) {
     
       //setVU(0,6);
 
@@ -193,82 +238,109 @@ void *Listen() {
       saveCurrentPic();
     }
        
-    gdk_threads_enter        ();
-    gtk_widget_set_sensitive (gui.frame_slant,  TRUE);
-    gtk_widget_set_sensitive (gui.frame_manual, TRUE);
-    gtk_widget_set_sensitive (gui.combo_card,   TRUE);
-    gdk_threads_leave        ();
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.frame_slant, NULL, NULL, 0, 0, TRUE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.frame_manual, NULL, NULL, 0, 0, TRUE);
+    gui_dispatch(GUI_ACTION_SENSITIVE, gui.combo_card, NULL, NULL, 0, 0, TRUE);
     
   }
 }
 
 
-/*
- * main
- */
+static GString *config_path;
+static gboolean application_initialized;
 
-int main(int argc, char *argv[]) {
+static void application_activate(GtkApplication *application, gpointer user_data) {
+  const gchar *config_dir;
+  (void)user_data;
 
-  FILE        *ConfFile;
-  const gchar *confdir;
-  GString     *confpath;
-  gchar       *confdata;
-  gsize       *keylen=NULL;
+  if (application_initialized) {
+    if (gui.window_main != NULL)
+      gtk_window_present(GTK_WINDOW(gui.window_main));
+    return;
+  }
+  application_initialized = TRUE;
 
-  gtk_init (&argc, &argv);
-
-  gdk_threads_init ();
-
-  // Load config
-  confdir  = g_get_user_config_dir();
-  confpath = g_string_new(confdir);
-  g_string_append(confpath, "/slowrx.ini");
+  config_dir = g_get_user_config_dir();
+  config_path = g_string_new(config_dir);
+  g_string_append(config_path, "/slowrx.ini");
 
   config = g_key_file_new();
-  if (g_key_file_load_from_file(config, confpath->str, G_KEY_FILE_KEEP_COMMENTS, NULL)) {
-
-  } else {
+  if (!g_key_file_load_from_file(config, config_path->str,
+                                 G_KEY_FILE_KEEP_COMMENTS, NULL)) {
     printf("No valid config file found\n");
-    g_key_file_load_from_data(config, "[slowrx]\ndevice=default", -1, G_KEY_FILE_NONE, NULL);
+    g_key_file_load_from_data(config, "[slowrx]\ndevice=default", -1,
+                              G_KEY_FILE_NONE, NULL);
   }
 
-  // Prepare FFT
   fft.in = fftw_alloc_real(2048);
   if (fft.in == NULL) {
     perror("GetVideo: Unable to allocate memory for FFT");
-    exit(EXIT_FAILURE);
+    g_application_quit(G_APPLICATION(application));
+    return;
   }
   fft.out = fftw_alloc_complex(2048);
   if (fft.out == NULL) {
     perror("GetVideo: Unable to allocate memory for FFT");
     fftw_free(fft.in);
-    exit(EXIT_FAILURE);
+    fft.in = NULL;
+    g_application_quit(G_APPLICATION(application));
+    return;
   }
-  memset(fft.in,  0, sizeof(double) * 2048);
-
+  memset(fft.in, 0, sizeof(double) * 2048);
   fft.Plan1024 = fftw_plan_dft_r2c_1d(1024, fft.in, fft.out, FFTW_ESTIMATE);
   fft.Plan2048 = fftw_plan_dft_r2c_1d(2048, fft.in, fft.out, FFTW_ESTIMATE);
 
-  createGUI();
+  createGUI(application);
   populateDeviceList();
+}
 
-  gtk_main();
+int main(int argc, char *argv[]) {
+  GtkApplication *application;
+  FILE *config_file;
+  gchar *config_data;
+  gsize config_length;
+  int status;
 
-  // Save config on exit
-  ConfFile = fopen(confpath->str,"w");
-  if (ConfFile == NULL) {
-    perror("Unable to open config file for writing");
-  } else {
-    confdata = g_key_file_to_data(config,keylen,NULL);
-    fprintf(ConfFile,"%s",confdata);
-    fwrite(confdata,1,(size_t)keylen,ConfFile);
-    fclose(ConfFile);
+  application = gtk_application_new("org.slowrx.SlowRx",
+                                    G_APPLICATION_DEFAULT_FLAGS);
+  g_signal_connect(application, "activate",
+                   G_CALLBACK(application_activate), NULL);
+  status = g_application_run(G_APPLICATION(application), argc, argv);
+
+  g_atomic_int_set(&ApplicationStopping, TRUE);
+  Abort = TRUE;
+  if (listen_thread_started) {
+    pthread_join(thread1, NULL);
+    listen_thread_started = FALSE;
   }
 
-  g_object_unref(pixbuf_rx);
-  free(StoredLum);
-  fftw_free(fft.in);
-  fftw_free(fft.out);
+  if (config != NULL && config_path != NULL) {
+    config_file = fopen(config_path->str, "w");
+    if (config_file == NULL) {
+      perror("Unable to open config file for writing");
+    } else {
+      config_data = g_key_file_to_data(config, &config_length, NULL);
+      if (config_data != NULL) {
+        if (fwrite(config_data, 1, config_length, config_file) != config_length)
+          perror("Unable to write config file");
+        g_free(config_data);
+      }
+      fclose(config_file);
+    }
+    g_key_file_unref(config);
+  }
+  if (config_path != NULL)
+    g_string_free(config_path, TRUE);
 
-  return (EXIT_SUCCESS);
+  g_clear_object(&pixbuf_rx);
+  g_clear_object(&pixbuf_disp);
+  g_clear_object(&pixbuf_PWR);
+  g_clear_object(&pixbuf_SNR);
+  free(StoredLum);
+  if (fft.Plan1024 != NULL) fftw_destroy_plan(fft.Plan1024);
+  if (fft.Plan2048 != NULL) fftw_destroy_plan(fft.Plan2048);
+  if (fft.in != NULL) fftw_free(fft.in);
+  if (fft.out != NULL) fftw_free(fft.out);
+  g_object_unref(application);
+  return status;
 }

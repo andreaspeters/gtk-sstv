@@ -245,9 +245,7 @@ gboolean GetVideo(guchar Mode, double Rate, int Skip, gboolean Redraw) {
   pixbuf_disp = gdk_pixbuf_scale_simple(pixbuf_rx, 500,
       500.0/ModeSpec[Mode].ImgWidth * ModeSpec[Mode].NumLines * ModeSpec[Mode].LineHeight, GDK_INTERP_BILINEAR);
 
-  gdk_threads_enter();
-  gtk_image_set_from_pixbuf(GTK_IMAGE(gui.image_rx), pixbuf_disp);
-  gdk_threads_leave();
+  gui_set_image_pixbuf(gui.image_rx, pixbuf_disp);
 
   
   if(NumChans == 4) //In PD* modes, each radio frame encodes two image lines
@@ -473,9 +471,7 @@ gboolean GetVideo(guchar Mode, double Rate, int Skip, gboolean Redraw) {
             pixbuf_disp = gdk_pixbuf_scale_simple(pixbuf_rx, 500,
                                                   500.0 / ModeSpec[Mode].ImgWidth * ModeSpec[Mode].NumLines * ModeSpec[Mode].LineHeight, GDK_INTERP_BILINEAR);
 
-            gdk_threads_enter();
-            gtk_image_set_from_pixbuf(GTK_IMAGE(gui.image_rx), pixbuf_disp);
-            gdk_threads_leave();
+            gui_set_image_pixbuf(gui.image_rx, pixbuf_disp);
           }
         }
 

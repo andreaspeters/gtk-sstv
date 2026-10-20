@@ -5,9 +5,12 @@
 #include <glib/gstdio.h>
 #include <alsa/asoundlib.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fftw3.h>
 
+#include "common.h"
 #include "compose.h"
 #include "encoder.h"
 #include "txaudio.h"
@@ -23,6 +26,7 @@ typedef struct {
   GtkWidget *their_call;
   GtkWidget *report;
   GtkWidget *message;
+  GtkWidget *message_presets;
   GtkWidget *station_info;
   GtkWidget *station_font_size;
   GtkWidget *station_color;
@@ -30,6 +34,7 @@ typedef struct {
   GtkWidget *status;
   GtkWidget *send_button;
   GtkWidget *audio_device;
+  GPtrArray *audio_device_ids;
   GtkWidget *fskid_toggle;
   GtkWidget *mode_combo;
   GtkWidget *reply_position;
@@ -53,30 +58,64 @@ typedef struct {
   gchar *message;
 } TxPlaybackJob;
 
+typedef struct {
+  GtkWidget *panel;
+  GtkWidget *check;
+  GdkPixbuf *composed;
+  SstvPcm pcm;
+  gchar *my_call;
+  gchar *audio_device;
+  SstvMode mode;
+  gboolean append_id;
+} TxPendingTransmission;
+
 static void tx_state_free(gpointer data) {
   TxDialogState *state = data;
   if (state->received != NULL) g_object_unref(state->received);
   if (state->source != NULL) g_object_unref(state->source);
+  g_clear_pointer(&state->audio_device_ids, g_ptr_array_unref);
   g_free(state);
 }
 
 static const gchar *entry_text(GtkWidget *widget) {
-  return gtk_entry_get_text(GTK_ENTRY(widget));
+  return gtk_editable_get_text(GTK_EDITABLE(widget));
 }
 
 static SstvMode selected_mode(TxDialogState *state) {
-  const gchar *id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->mode_combo));
+  guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(state->mode_combo));
   SstvMode mode = SSTV_MODE_ROBOT36;
-  if (g_strcmp0(id, "MARTIN_M1") == 0) mode = SSTV_MODE_MARTIN_M1;
-  else if (g_strcmp0(id, "MARTIN_M2") == 0) mode = SSTV_MODE_MARTIN_M2;
+  if (selected == 1) mode = SSTV_MODE_MARTIN_M1;
+  else if (selected == 2) mode = SSTV_MODE_MARTIN_M2;
   return mode;
 }
 
-static void populate_audio_devices(GtkWidget *combo, const gchar *saved_device) {
+static const gchar *selected_mode_id(TxDialogState *state) {
+  guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(state->mode_combo));
+  if (selected == 1) return "MARTIN_M1";
+  if (selected == 2) return "MARTIN_M2";
+  return "ROBOT36";
+}
+
+static const gchar *selected_audio_device(TxDialogState *state) {
+  guint selected = gtk_drop_down_get_selected(
+      GTK_DROP_DOWN(state->audio_device));
+  if (state->audio_device_ids == NULL ||
+      selected >= state->audio_device_ids->len)
+    return "default";
+  return g_ptr_array_index(state->audio_device_ids, selected);
+}
+
+static void populate_audio_devices(TxDialogState *state,
+                                   const gchar *saved_device) {
+  GtkStringList *names;
   int card = -1;
   int status;
+  guint selected = 0;
 
-  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), "default", "default");
+  names = GTK_STRING_LIST(gtk_drop_down_get_model(
+      GTK_DROP_DOWN(state->audio_device)));
+  state->audio_device_ids = g_ptr_array_new_with_free_func(g_free);
+  g_ptr_array_add(state->audio_device_ids, g_strdup("default"));
   while ((status = snd_card_next(&card)) >= 0 && card != -1) {
     char *cardname = NULL;
     gchar *playback_device;
@@ -87,28 +126,32 @@ static void populate_audio_devices(GtkWidget *combo, const gchar *saved_device) 
     }
 
     playback_device = g_strdup_printf("plughw:%d", card);
-    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), playback_device, cardname);
+    gtk_string_list_append(names, cardname);
+    g_ptr_array_add(state->audio_device_ids, g_strdup(playback_device));
+    if (g_strcmp0(saved_device, playback_device) == 0)
+      selected = state->audio_device_ids->len - 1;
     g_free(playback_device);
     free(cardname);
   }
 
-  if (saved_device == NULL ||
-      !gtk_combo_box_set_active_id(GTK_COMBO_BOX(combo), saved_device))
-    gtk_combo_box_set_active_id(GTK_COMBO_BOX(combo), "default");
+  if (g_strcmp0(saved_device, "default") == 0)
+    selected = 0;
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(state->audio_device), selected);
 }
 
 static void callsign_changed(GtkEditable *editable, gpointer user_data) {
   TxDialogState *state = user_data;
   g_key_file_set_string(state->config, "slowrx", "tx_callsign",
-                        gtk_entry_get_text(GTK_ENTRY(editable)));
+                        gtk_editable_get_text(GTK_EDITABLE(editable)));
 }
 
-static void device_changed(GtkComboBox *combo, gpointer user_data) {
+static void device_changed(GObject *object, GParamSpec *pspec,
+                           gpointer user_data) {
   TxDialogState *state = user_data;
-  const gchar *id = gtk_combo_box_get_active_id(combo);
-  if (id != NULL) {
-    g_key_file_set_string(state->config, "slowrx", "tx_device", id);
-  }
+  (void)object;
+  (void)pspec;
+  g_key_file_set_string(state->config, "slowrx", "tx_device",
+                        selected_audio_device(state));
 }
 
 static void fskid_toggled(GtkToggleButton *button, gpointer user_data) {
@@ -117,25 +160,33 @@ static void fskid_toggled(GtkToggleButton *button, gpointer user_data) {
                          gtk_toggle_button_get_active(button));
 }
 
-static void reply_position_changed(GtkComboBox *combo, gpointer user_data) {
+static const gchar *selected_reply_position_id(TxDialogState *state) {
+  guint selected = gtk_drop_down_get_selected(
+      GTK_DROP_DOWN(state->reply_position));
+  return selected == 1 ? "right" : "left";
+}
+
+static void reply_position_changed(GObject *object, GParamSpec *pspec,
+                                   gpointer user_data) {
   TxDialogState *state = user_data;
-  const gchar *id = gtk_combo_box_get_active_id(combo);
-  if (id != NULL)
-    g_key_file_set_string(state->config, "slowrx", "tx_reply_position", id);
+  (void)object;
+  (void)pspec;
+  g_key_file_set_string(state->config, "slowrx", "tx_reply_position",
+                        selected_reply_position_id(state));
   if (state->reply_mode) compose_preview(state, NULL);
 }
 
-static void mode_changed(GtkComboBox *combo, gpointer user_data) {
+static void mode_changed(GObject *object, GParamSpec *pspec,
+                         gpointer user_data) {
   TxDialogState *state = user_data;
-  const gchar *id = gtk_combo_box_get_active_id(combo);
-  if (id != NULL) {
-    g_key_file_set_string(state->config, "slowrx", "tx_mode", id);
-  }
+  (void)object;
+  (void)pspec;
+  g_key_file_set_string(state->config, "slowrx", "tx_mode",
+                        selected_mode_id(state));
 }
 
 static const gchar *message_text(TxDialogState *state) {
-  GtkWidget *entry = gtk_bin_get_child(GTK_BIN(state->message));
-  return (entry != NULL) ? gtk_entry_get_text(GTK_ENTRY(entry)) : "";
+  return gtk_editable_get_text(GTK_EDITABLE(state->message));
 }
 
 static gchar *station_info_text(TxDialogState *state) {
@@ -148,8 +199,23 @@ static gchar *station_info_text(TxDialogState *state) {
 static void message_changed(GtkEditable *editable, gpointer user_data) {
   TxDialogState *state = user_data;
   g_key_file_set_string(state->config, "slowrx", "tx_message",
-                        gtk_entry_get_text(GTK_ENTRY(editable)));
+                        gtk_editable_get_text(GTK_EDITABLE(editable)));
   if (state->source != NULL) compose_preview(state, NULL);
+}
+
+static void message_preset_changed(GObject *object, GParamSpec *pspec,
+                                   gpointer user_data) {
+  TxDialogState *state = user_data;
+  guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(object));
+  GtkStringList *presets;
+  const gchar *text;
+  (void)pspec;
+  if (selected == 0 || selected == GTK_INVALID_LIST_POSITION) return;
+  presets = GTK_STRING_LIST(gtk_drop_down_get_model(GTK_DROP_DOWN(object)));
+  text = gtk_string_list_get_string(presets, selected);
+  if (text != NULL)
+    gtk_editable_set_text(GTK_EDITABLE(state->message), text);
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(object), 0);
 }
 
 static void station_info_changed(GtkTextBuffer *buffer, gpointer user_data) {
@@ -170,12 +236,13 @@ static void station_font_size_changed(GtkSpinButton *button, gpointer user_data)
   if (state->source != NULL) compose_preview(state, NULL);
 }
 
-static void station_color_set(GtkColorButton *button, gpointer user_data) {
+static void station_color_set(GObject *button, GParamSpec *pspec, gpointer user_data) {
   TxDialogState *state = user_data;
-  GdkRGBA color;
+  const GdkRGBA *color;
   gchar *color_text;
-  gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(button), &color);
-  color_text = gdk_rgba_to_string(&color);
+  (void)pspec;
+  color = gtk_color_dialog_button_get_rgba(GTK_COLOR_DIALOG_BUTTON(button));
+  color_text = gdk_rgba_to_string(color);
   g_key_file_set_string(state->config, "slowrx", "tx_station_font_color", color_text);
   g_free(color_text);
   if (state->source != NULL) compose_preview(state, NULL);
@@ -198,6 +265,7 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
   gchar *station_text;
   const gchar *position_id;
   GdkPixbuf *composed;
+  GdkTexture *texture;
   GdkRGBA station_color;
   guint station_font_size;
 
@@ -210,11 +278,11 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
   station_text = station_info_text(state);
   station_font_size = (guint)gtk_spin_button_get_value_as_int(
       GTK_SPIN_BUTTON(state->station_font_size));
-  gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(state->station_color),
-                             &station_color);
+  station_color = *gtk_color_dialog_button_get_rgba(
+      GTK_COLOR_DIALOG_BUTTON(state->station_color));
   gtk_label_set_text(GTK_LABEL(state->utc_label), utc_text);
   if (state->reply_mode) {
-    position_id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->reply_position));
+    position_id = selected_reply_position_id(state);
     composed = sstv_compose_reply_image(state->source,
                                         entry_text(state->my_call),
                                         entry_text(state->their_call),
@@ -239,67 +307,113 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
     if (error != NULL) g_error_free(error);
     return FALSE;
   }
-  gtk_image_set_from_pixbuf(GTK_IMAGE(state->preview), composed);
+  texture = gui_texture_new_from_pixbuf(composed);
+  gtk_picture_set_paintable(GTK_PICTURE(state->preview),
+                            texture != NULL ? GDK_PAINTABLE(texture) : NULL);
+  g_clear_object(&texture);
   if (composed_out != NULL) *composed_out = composed;
   else g_object_unref(composed);
   set_status(state, "Preview updated. Verify the callsigns and report before transmitting.");
   return TRUE;
 }
 
-static void choose_photo(TxDialogState *state) {
-  GtkWidget *chooser;
-  GtkFileFilter *filter;
-  gchar *filename;
-  GError *error = NULL;
-  GdkPixbuf *loaded;
-
-  chooser = gtk_file_chooser_dialog_new("Choose SSTV photo",
-                                       state->parent,
-                                       GTK_FILE_CHOOSER_ACTION_OPEN,
-                                       "_Cancel", GTK_RESPONSE_CANCEL,
-                                       "_Open", GTK_RESPONSE_ACCEPT,
-                                       NULL);
-  filter = gtk_file_filter_new();
-  gtk_file_filter_set_name(filter, "Image files");
-  gtk_file_filter_add_pixbuf_formats(filter);
-  gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(chooser), filter);
-
-  if (gtk_dialog_run(GTK_DIALOG(chooser)) != GTK_RESPONSE_ACCEPT) {
-    gtk_widget_destroy(chooser);
-    state->changing_source = TRUE;
-    gtk_combo_box_set_active(GTK_COMBO_BOX(state->source_combo),
-                             state->has_received ? 0 : -1);
-    state->changing_source = FALSE;
-    return;
-  }
-
-  filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
-  gtk_widget_destroy(chooser);
-  if (filename == NULL) return;
-  loaded = gdk_pixbuf_new_from_file(filename, &error);
-  g_free(filename);
-  if (loaded == NULL) {
-    set_status(state, error != NULL ? error->message : "Unable to load selected image.");
-    if (error != NULL) g_error_free(error);
-    state->changing_source = TRUE;
-    gtk_combo_box_set_active(GTK_COMBO_BOX(state->source_combo),
-                             state->has_received ? 0 : -1);
-    state->changing_source = FALSE;
-    return;
-  }
-
-  if (state->source != NULL) g_object_unref(state->source);
-  state->source = loaded;
-  state->reply_mode = FALSE;
-  set_status(state, "Photo loaded. Use Preview to check the composed SSTV image.");
-  compose_preview(state, NULL);
+static void reset_source_selection(TxDialogState *state) {
+  state->changing_source = TRUE;
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(state->source_combo),
+                             state->has_received ? 0 : GTK_INVALID_LIST_POSITION);
+  state->changing_source = FALSE;
 }
 
-static void source_changed(GtkComboBox *combo, gpointer user_data) {
+static void photo_chooser_response(GObject *source_object,
+                                   GAsyncResult *result,
+                                   gpointer user_data) {
+  GtkWidget *panel = GTK_WIDGET(user_data);
+  TxDialogState *state = g_object_get_data(G_OBJECT(panel), TX_STATE_KEY);
+  GFile *file;
+  gchar *filename = NULL;
+  GdkPixbuf *loaded = NULL;
+  GError *error = NULL;
+
+  file = gtk_file_dialog_open_finish(GTK_FILE_DIALOG(source_object), result,
+                                     NULL);
+  if (state != NULL && !state->destroyed && file != NULL) {
+    filename = g_file_get_path(file);
+    if (filename != NULL)
+      loaded = gdk_pixbuf_new_from_file(filename, &error);
+    if (loaded == NULL) {
+      set_status(state, error != NULL ? error->message :
+                 "Unable to load the selected local image.");
+      reset_source_selection(state);
+    } else {
+      if (state->source != NULL) g_object_unref(state->source);
+      state->source = loaded;
+      loaded = NULL;
+      state->reply_mode = FALSE;
+      set_status(state, "Photo loaded. Use Preview to check the composed SSTV image.");
+      compose_preview(state, NULL);
+    }
+  } else if (state != NULL && !state->destroyed) {
+    reset_source_selection(state);
+  }
+  g_clear_object(&file);
+  g_clear_object(&loaded);
+  g_clear_error(&error);
+  g_free(filename);
+  g_object_unref(panel);
+}
+
+static void add_pixbuf_format_mime_types(GtkFileFilter *filter) {
+  GSList *formats = gdk_pixbuf_get_formats();
+  GSList *format_item;
+
+  for (format_item = formats; format_item != NULL;
+       format_item = format_item->next) {
+    GdkPixbufFormat *format = format_item->data;
+    gchar **mime_types;
+    gchar **mime_type;
+
+    if (gdk_pixbuf_format_is_disabled(format))
+      continue;
+    mime_types = gdk_pixbuf_format_get_mime_types(format);
+    if (mime_types == NULL)
+      continue;
+    for (mime_type = mime_types; *mime_type != NULL; ++mime_type)
+      gtk_file_filter_add_mime_type(filter, *mime_type);
+    g_strfreev(mime_types);
+  }
+  g_slist_free(formats);
+}
+
+static void choose_photo(TxDialogState *state) {
+  GtkFileDialog *chooser;
+  GListStore *filters;
+  GtkFileFilter *filter;
+
+  chooser = gtk_file_dialog_new();
+  gtk_file_dialog_set_title(chooser, "Choose SSTV photo");
+  gtk_file_dialog_set_accept_label(chooser, "_Open");
+  gtk_file_dialog_set_modal(chooser, TRUE);
+  filter = gtk_file_filter_new();
+  gtk_file_filter_set_name(filter, "Image files");
+  add_pixbuf_format_mime_types(filter);
+  filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
+  g_list_store_append(filters, filter);
+  gtk_file_dialog_set_filters(chooser, G_LIST_MODEL(filters));
+  gtk_file_dialog_set_default_filter(chooser, filter);
+  gtk_file_dialog_open(chooser, state->parent, NULL,
+                       photo_chooser_response, g_object_ref(state->panel));
+  g_object_unref(filters);
+  g_object_unref(filter);
+  g_object_unref(chooser);
+}
+
+static void source_changed(GObject *object, GParamSpec *pspec,
+                           gpointer user_data) {
   TxDialogState *state = user_data;
-  int selected;
+  guint selected;
+  (void)pspec;
   if (state->changing_source) return;
-  selected = gtk_combo_box_get_active(combo);
+  selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(object));
   if (selected == 1) {
     choose_photo(state);
   } else if (selected == 0 && state->has_received) {
@@ -451,22 +565,129 @@ cleanup:
   return saved;
 }
 
+static void tx_pending_transmission_free(gpointer data, GClosure *closure) {
+  TxPendingTransmission *pending = data;
+  (void)closure;
+  if (pending->composed != NULL) g_object_unref(pending->composed);
+  free(pending->pcm.samples);
+  g_free(pending->my_call);
+  g_free(pending->audio_device);
+  g_object_unref(pending->panel);
+  g_free(pending);
+}
+
+static void transmission_confirm_response(GtkWindow *dialog, gint response,
+                                          gpointer user_data) {
+  TxPendingTransmission *pending = user_data;
+  TxDialogState *state = g_object_get_data(G_OBJECT(pending->panel), TX_STATE_KEY);
+  TxPlaybackJob *job;
+  GThread *thread;
+  GError *error = NULL;
+  gchar *saved_path = NULL;
+  gchar *status_text;
+
+  if (state == NULL || state->destroyed) {
+    gtk_window_destroy(dialog);
+    return;
+  }
+  if (response != GTK_RESPONSE_ACCEPT ||
+      !gtk_check_button_get_active(GTK_CHECK_BUTTON(pending->check))) {
+    set_status(state, "Transmission cancelled.");
+    gtk_window_destroy(dialog);
+    return;
+  }
+  if (!save_transmit_image(state->config, pending->composed, pending->mode,
+                           pending->my_call, &saved_path, &error)) {
+    set_status(state, error != NULL ? error->message : "Unable to save TX image.");
+    g_clear_error(&error);
+    gtk_window_destroy(dialog);
+    return;
+  }
+
+  state->playing = TRUE;
+  gtk_widget_set_sensitive(state->send_button, FALSE);
+  status_text = g_strdup_printf(
+      "Saved TX image: %s. Transmitting %s SSTV%s audio to '%s'...",
+      saved_path, sstv_mode_name(pending->mode),
+      pending->append_id ? " with FSKID after image" : "",
+      pending->audio_device);
+  set_status(state, status_text);
+  g_free(status_text);
+  g_free(saved_path);
+
+  job = g_new0(TxPlaybackJob, 1);
+  job->panel = g_object_ref(state->panel);
+  job->device = g_strdup(pending->audio_device);
+  job->pcm = pending->pcm;
+  pending->pcm.samples = NULL;
+  thread = g_thread_try_new("sstv-tx-audio", playback_thread, job, &error);
+  if (thread == NULL) {
+    state->playing = FALSE;
+    gtk_widget_set_sensitive(state->send_button, TRUE);
+    set_status(state, error != NULL ? error->message :
+               "Unable to start playback thread.");
+    g_clear_error(&error);
+    free(job->pcm.samples);
+    g_free(job->device);
+    g_object_unref(job->panel);
+    g_free(job);
+    gtk_window_destroy(dialog);
+    return;
+  }
+  g_thread_unref(thread);
+  gtk_window_destroy(dialog);
+}
+
+static void tx_pending_transmission_destroy(gpointer data) {
+  tx_pending_transmission_free(data, NULL);
+}
+
+static void transmission_confirm_button_clicked(GtkButton *button,
+                                                gpointer user_data) {
+  GtkWindow *dialog = GTK_WINDOW(user_data);
+  TxPendingTransmission *pending =
+      g_object_get_data(G_OBJECT(dialog), "tx-pending");
+  gint response = GPOINTER_TO_INT(
+      g_object_get_data(G_OBJECT(button), "tx-response"));
+
+  if (pending != NULL)
+    transmission_confirm_response(dialog, response, pending);
+}
+
+static gboolean transmission_confirm_close_request(GtkWindow *dialog,
+                                                   gpointer user_data) {
+  TxPendingTransmission *pending =
+      g_object_get_data(G_OBJECT(dialog), "tx-pending");
+  (void)user_data;
+
+  if (pending == NULL)
+    return FALSE;
+  transmission_confirm_response(dialog, GTK_RESPONSE_DELETE_EVENT, pending);
+  return TRUE;
+}
+
 static void begin_transmission(TxDialogState *state) {
   GdkPixbuf *composed = NULL;
   SstvPcm pcm = { NULL, 0 };
   GError *error = NULL;
   GtkWidget *confirm;
-  GtkWidget *content;
+  GtkWidget *root_box;
+  GtkWidget *message_box;
+  GtkWidget *header_box;
+  GtkWidget *text_box;
+  GtkWidget *warning_icon;
+  GtkWidget *heading;
+  GtkWidget *body;
   GtkWidget *check;
-  TxPlaybackJob *job;
-  GThread *thread;
+  GtkWidget *action_box;
+  GtkWidget *cancel_button;
+  GtkWidget *transmit_button;
+  TxPendingTransmission *pending;
   const gchar *my_call = entry_text(state->my_call);
   const gchar *audio_device;
   SstvMode mode;
   gchar *confirm_title;
   gchar *confirm_text;
-  gchar *status_text;
-  gchar *saved_path = NULL;
   gboolean append_id;
 
   if (*my_call == '\0') {
@@ -474,21 +695,19 @@ static void begin_transmission(TxDialogState *state) {
     gtk_widget_grab_focus(state->my_call);
     return;
   }
-  audio_device = gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->audio_device));
+  audio_device = selected_audio_device(state);
   mode = selected_mode(state);
   append_id = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(state->fskid_toggle));
-  if (!compose_preview(state, &composed)) {
-    return;
-  }
+  if (!compose_preview(state, &composed)) return;
   if (!sstv_encode_mode(composed, mode, &pcm, &error)) {
     set_status(state, error != NULL ? error->message : "SSTV encoding failed.");
-    if (error != NULL) g_error_free(error);
+    g_clear_error(&error);
     g_object_unref(composed);
     return;
   }
   if (append_id && !append_fskid_audio(&pcm, my_call, &error)) {
     set_status(state, error != NULL ? error->message : "FSKID encoding failed.");
-    if (error != NULL) g_error_free(error);
+    g_clear_error(&error);
     free(pcm.samples);
     g_object_unref(composed);
     return;
@@ -497,69 +716,97 @@ static void begin_transmission(TxDialogState *state) {
   confirm_title = g_strdup_printf("Ready to send a %s SSTV picture%s?",
                                   sstv_mode_name(mode),
                                   append_id ? " with FSKID after image" : "");
-  confirm = gtk_message_dialog_new(state->parent, GTK_DIALOG_MODAL,
-                                   GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
-                                   "%s", confirm_title);
-  g_free(confirm_title);
-  confirm_text = g_strdup_printf("This plays 44.1 kHz audio on '%s'. %s If that output is connected to a radio, use the matching SSTV mode and frequency and key PTT/VOX only when ready. slowrx does not control PTT.",
-                                 audio_device != NULL ? audio_device : "default",
-                                 append_id ? "Your FSKID callsign will follow the image." : "No FSKID will be sent.");
-  gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(confirm), "%s",
-                                           confirm_text);
+  confirm_text = g_strdup_printf(
+      "This plays 44.1 kHz audio on '%s'. %s If that output is connected to a radio, use the matching SSTV mode and frequency and key PTT/VOX only when ready. slowrx does not control PTT.",
+      audio_device != NULL ? audio_device : "default",
+      append_id ? "Your FSKID callsign will follow the image." : "No FSKID will be sent.");
+  confirm = gtk_window_new();
+  gtk_window_set_application(GTK_WINDOW(confirm),
+                             gtk_window_get_application(state->parent));
+  gtk_window_set_title(GTK_WINDOW(confirm), "SSTV transmission confirmation");
+  gtk_window_set_transient_for(GTK_WINDOW(confirm), state->parent);
+  gtk_window_set_modal(GTK_WINDOW(confirm), TRUE);
+  gtk_window_set_destroy_with_parent(GTK_WINDOW(confirm), TRUE);
+
+  root_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  gtk_widget_set_margin_top(root_box, 16);
+  gtk_widget_set_margin_bottom(root_box, 16);
+  gtk_widget_set_margin_start(root_box, 16);
+  gtk_widget_set_margin_end(root_box, 16);
+  message_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  header_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  warning_icon = gtk_image_new_from_icon_name("dialog-warning-symbolic");
+  gtk_image_set_pixel_size(GTK_IMAGE(warning_icon), 32);
+  gtk_widget_set_valign(warning_icon, GTK_ALIGN_START);
+  text_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+  heading = gtk_label_new(confirm_title);
+  gtk_label_set_xalign(GTK_LABEL(heading), 0.0);
+  gtk_label_set_wrap(GTK_LABEL(heading), TRUE);
+  gtk_widget_add_css_class(heading, "title-3");
+  body = gtk_label_new(confirm_text);
+  gtk_label_set_xalign(GTK_LABEL(body), 0.0);
+  gtk_label_set_wrap(GTK_LABEL(body), TRUE);
+  gtk_label_set_selectable(GTK_LABEL(body), TRUE);
+  gtk_box_append(GTK_BOX(text_box), heading);
+  gtk_box_append(GTK_BOX(text_box), body);
+  gtk_box_append(GTK_BOX(header_box), warning_icon);
+  gtk_box_append(GTK_BOX(header_box), text_box);
+  gtk_box_append(GTK_BOX(message_box), header_box);
+  gtk_widget_set_visible(warning_icon, TRUE);
+  gtk_widget_set_visible(heading, TRUE);
+  gtk_widget_set_visible(body, TRUE);
+  gtk_widget_set_visible(text_box, TRUE);
+  gtk_widget_set_visible(header_box, TRUE);
+
   g_free(confirm_text);
-  content = gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(confirm));
-  check = gtk_check_button_new_with_label("I have checked the radio, frequency and transmit path");
-  gtk_box_pack_start(GTK_BOX(content), check, FALSE, FALSE, 6);
-  gtk_dialog_add_button(GTK_DIALOG(confirm), "Cancel", GTK_RESPONSE_CANCEL);
-  gtk_dialog_add_button(GTK_DIALOG(confirm), "Transmit audio", GTK_RESPONSE_ACCEPT);
-  gtk_widget_show(check);
-  if (gtk_dialog_run(GTK_DIALOG(confirm)) != GTK_RESPONSE_ACCEPT ||
-      !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(check))) {
-    gtk_widget_destroy(confirm);
-    free(pcm.samples);
-    g_object_unref(composed);
-    set_status(state, "Transmission cancelled.");
-    return;
-  }
-  gtk_widget_destroy(confirm);
+  g_free(confirm_title);
+  check = gtk_check_button_new_with_label(
+      "I have checked the radio, frequency and transmit path");
+  gtk_widget_set_margin_top(check, 6);
+  gtk_widget_set_margin_bottom(check, 6);
+  gtk_widget_set_margin_start(check, 6);
+  gtk_widget_set_margin_end(check, 6);
+  gtk_box_append(GTK_BOX(message_box), check);
+  gtk_widget_set_visible(check, TRUE);
+  gtk_widget_set_visible(message_box, TRUE);
 
-  if (!save_transmit_image(state->config, composed, mode, my_call,
-                           &saved_path, &error)) {
-    set_status(state, error != NULL ? error->message : "Unable to save TX image.");
-    if (error != NULL) g_error_free(error);
-    free(pcm.samples);
-    g_object_unref(composed);
-    return;
-  }
-  g_object_unref(composed);
+  action_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+  gtk_widget_set_halign(action_box, GTK_ALIGN_END);
+  cancel_button = gtk_button_new_with_label("Cancel");
+  transmit_button = gtk_button_new_with_label("Transmit audio");
+  gtk_box_append(GTK_BOX(action_box), cancel_button);
+  gtk_box_append(GTK_BOX(action_box), transmit_button);
+  gtk_box_append(GTK_BOX(root_box), message_box);
+  gtk_box_append(GTK_BOX(root_box), action_box);
+  gtk_window_set_child(GTK_WINDOW(confirm), root_box);
+  gtk_window_set_default_widget(GTK_WINDOW(confirm), transmit_button);
+  gtk_widget_set_visible(cancel_button, TRUE);
+  gtk_widget_set_visible(transmit_button, TRUE);
+  gtk_widget_set_visible(action_box, TRUE);
+  gtk_widget_set_visible(root_box, TRUE);
 
-  state->playing = TRUE;
-  gtk_widget_set_sensitive(state->send_button, FALSE);
-  status_text = g_strdup_printf("Saved TX image: %s. Transmitting %s SSTV%s audio to '%s'...",
-                                saved_path, sstv_mode_name(mode),
-                                append_id ? " with FSKID after image" : "",
-                                audio_device != NULL ? audio_device : "default");
-  set_status(state, status_text);
-  g_free(status_text);
-  g_free(saved_path);
-
-  job = g_new0(TxPlaybackJob, 1);
-  job->panel = g_object_ref(state->panel);
-  job->device = g_strdup(audio_device != NULL ? audio_device : "default");
-  job->pcm = pcm;
-  thread = g_thread_try_new("sstv-tx-audio", playback_thread, job, &error);
-  if (thread == NULL) {
-    state->playing = FALSE;
-    gtk_widget_set_sensitive(state->send_button, TRUE);
-    set_status(state, error != NULL ? error->message : "Unable to start playback thread.");
-    if (error != NULL) g_error_free(error);
-    free(job->pcm.samples);
-    g_free(job->device);
-    g_object_unref(job->panel);
-    g_free(job);
-    return;
-  }
-  g_thread_unref(thread);
+  pending = g_new0(TxPendingTransmission, 1);
+  pending->panel = g_object_ref(state->panel);
+  pending->check = check;
+  pending->composed = composed;
+  pending->pcm = pcm;
+  pending->my_call = g_strdup(my_call);
+  pending->audio_device = g_strdup(audio_device != NULL ? audio_device : "default");
+  pending->mode = mode;
+  pending->append_id = append_id;
+  g_object_set_data_full(G_OBJECT(confirm), "tx-pending", pending,
+                         tx_pending_transmission_destroy);
+  g_signal_connect(confirm, "close-request",
+                   G_CALLBACK(transmission_confirm_close_request), NULL);
+  g_object_set_data(G_OBJECT(cancel_button), "tx-response",
+                    GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
+  g_object_set_data(G_OBJECT(transmit_button), "tx-response",
+                    GINT_TO_POINTER(GTK_RESPONSE_ACCEPT));
+  g_signal_connect(cancel_button, "clicked",
+                   G_CALLBACK(transmission_confirm_button_clicked), confirm);
+  g_signal_connect(transmit_button, "clicked",
+                   G_CALLBACK(transmission_confirm_button_clicked), confirm);
+  gtk_window_present(GTK_WINDOW(confirm));
 }
 
 static void panel_destroyed(GtkWidget *widget, gpointer user_data) {
@@ -580,185 +827,152 @@ static void preview_clicked(GtkButton *button, gpointer user_data) {
   compose_preview(state, NULL);
 }
 
-static GtkWidget *add_labeled_row(GtkWidget *grid, const gchar *label,
-                                  GtkWidget *widget, int row) {
-  GtkWidget *caption = gtk_label_new(label);
-  gtk_widget_set_halign(caption, GTK_ALIGN_START);
-  gtk_grid_attach(GTK_GRID(grid), caption, 0, row, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), widget, 1, row, 1, 1);
-  return widget;
-}
-
-GtkWidget *sstv_tx_panel_new(GtkWindow *parent, GKeyFile *config) {
+GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
+                             GKeyFile *config) {
   TxDialogState *state;
-  GtkWidget *grid, *preview_box, *button, *utc_caption;
-  GtkWidget *message_entry, *station_scroll, *station_style, *size_label, *color_label;
+  GtkWidget *preview_button;
   gchar *stored_call, *stored_device, *stored_mode, *stored_reply_position;
   gchar *stored_message, *stored_station_info, *stored_font_color;
   gint stored_font_size;
   GdkRGBA station_color;
-  int row = 0;
 
   state = g_new0(TxDialogState, 1);
   state->parent = parent;
   state->config = config;
-  state->panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+  state->panel = GTK_WIDGET(gtk_builder_get_object(builder, "tx_panel"));
+  state->source_combo = GTK_WIDGET(gtk_builder_get_object(builder, "tx_source_combo"));
+  state->audio_device = GTK_WIDGET(gtk_builder_get_object(builder, "tx_audio_device"));
+  state->mode_combo = GTK_WIDGET(gtk_builder_get_object(builder, "tx_mode_combo"));
+  state->reply_position = GTK_WIDGET(gtk_builder_get_object(builder, "tx_reply_position"));
+  state->my_call = GTK_WIDGET(gtk_builder_get_object(builder, "tx_my_call"));
+  state->fskid_toggle = GTK_WIDGET(gtk_builder_get_object(builder, "tx_fskid_toggle"));
+  state->their_call = GTK_WIDGET(gtk_builder_get_object(builder, "tx_their_call"));
+  state->report = GTK_WIDGET(gtk_builder_get_object(builder, "tx_report"));
+  state->message = GTK_WIDGET(gtk_builder_get_object(builder, "tx_message"));
+  state->message_presets = GTK_WIDGET(gtk_builder_get_object(builder, "tx_message_presets"));
+  state->station_info = GTK_WIDGET(gtk_builder_get_object(builder, "tx_station_info"));
+  state->station_font_size = GTK_WIDGET(gtk_builder_get_object(builder, "tx_station_font_size"));
+  state->station_color = GTK_WIDGET(gtk_builder_get_object(builder, "tx_station_color"));
+  state->utc_label = GTK_WIDGET(gtk_builder_get_object(builder, "tx_utc_label"));
+  state->preview = GTK_WIDGET(gtk_builder_get_object(builder, "tx_preview"));
+  state->status = GTK_WIDGET(gtk_builder_get_object(builder, "tx_status"));
+  state->send_button = GTK_WIDGET(gtk_builder_get_object(builder, "tx_send_button"));
+  preview_button = GTK_WIDGET(gtk_builder_get_object(builder, "tx_preview_button"));
+  if (state->panel == NULL || state->source_combo == NULL ||
+      state->audio_device == NULL || state->mode_combo == NULL ||
+      state->reply_position == NULL || state->my_call == NULL ||
+      state->fskid_toggle == NULL || state->their_call == NULL ||
+      state->report == NULL || state->message == NULL ||
+      state->message_presets == NULL || state->station_info == NULL ||
+      state->station_font_size == NULL || state->station_color == NULL ||
+      state->utc_label == NULL || state->preview == NULL ||
+      state->status == NULL || state->send_button == NULL ||
+      preview_button == NULL) {
+    g_warning("The GtkBuilder TX page is missing a required widget");
+    g_free(state);
+    return NULL;
+  }
+
+  /* Keep the user-editable TX controls editable even if a Builder default
+   * or a parent/container state changes independently. */
+  gtk_editable_set_editable(GTK_EDITABLE(state->my_call), TRUE);
+  gtk_editable_set_editable(GTK_EDITABLE(state->their_call), TRUE);
+  gtk_editable_set_editable(GTK_EDITABLE(state->report), TRUE);
+  gtk_editable_set_editable(GTK_EDITABLE(state->message), TRUE);
+  gtk_text_view_set_editable(GTK_TEXT_VIEW(state->station_info), TRUE);
+  gtk_widget_set_focusable(state->my_call, TRUE);
+  gtk_widget_set_focusable(state->their_call, TRUE);
+  gtk_widget_set_focusable(state->report, TRUE);
+  gtk_widget_set_focusable(state->message, TRUE);
+  gtk_widget_set_focusable(state->station_info, TRUE);
+  gtk_widget_set_focus_on_click(state->my_call, TRUE);
+  gtk_widget_set_focus_on_click(state->their_call, TRUE);
+  gtk_widget_set_focus_on_click(state->report, TRUE);
+  gtk_widget_set_focus_on_click(state->message, TRUE);
+  gtk_widget_set_focus_on_click(state->station_info, TRUE);
+  gtk_widget_set_sensitive(state->my_call, TRUE);
+  gtk_widget_set_sensitive(state->their_call, TRUE);
+  gtk_widget_set_sensitive(state->report, TRUE);
+  gtk_widget_set_sensitive(state->message, TRUE);
+  gtk_widget_set_sensitive(state->station_info, TRUE);
+
   g_object_set_data_full(G_OBJECT(state->panel), TX_STATE_KEY, state, tx_state_free);
   g_signal_connect(state->panel, "destroy", G_CALLBACK(panel_destroyed), state);
 
-  grid = gtk_grid_new();
-  gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
-  gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
-  gtk_container_set_border_width(GTK_CONTAINER(grid), 10);
-  gtk_box_pack_start(GTK_BOX(state->panel), grid, TRUE, TRUE, 0);
+  /* Prevent the initial model selection from opening the file chooser. */
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(state->source_combo),
+                             GTK_INVALID_LIST_POSITION);
+  g_signal_connect(state->source_combo, "notify::selected",
+                   G_CALLBACK(source_changed), state);
 
-  state->source_combo = gtk_combo_box_text_new();
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->source_combo),
-                                 "Most recently received SSTV image");
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->source_combo),
-                                 "Choose a photo file...");
-  add_labeled_row(grid, "Image source", state->source_combo, row++);
-  g_signal_connect(state->source_combo, "changed", G_CALLBACK(source_changed), state);
-
-  state->audio_device = gtk_combo_box_text_new();
   stored_device = g_key_file_get_string(config, "slowrx", "tx_device", NULL);
-  populate_audio_devices(state->audio_device, stored_device);
+  populate_audio_devices(state, stored_device);
   g_free(stored_device);
-  add_labeled_row(grid, "Transmit audio device", state->audio_device, row++);
-  g_signal_connect(state->audio_device, "changed", G_CALLBACK(device_changed), state);
+  g_signal_connect(state->audio_device, "notify::selected",
+                   G_CALLBACK(device_changed), state);
 
-  state->mode_combo = gtk_combo_box_text_new();
-  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->mode_combo), "ROBOT36",
-                            sstv_mode_name(SSTV_MODE_ROBOT36));
-  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->mode_combo), "MARTIN_M1",
-                            sstv_mode_name(SSTV_MODE_MARTIN_M1));
-  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->mode_combo), "MARTIN_M2",
-                            sstv_mode_name(SSTV_MODE_MARTIN_M2));
   stored_mode = g_key_file_get_string(config, "slowrx", "tx_mode", NULL);
-  if (stored_mode == NULL ||
-      !gtk_combo_box_set_active_id(GTK_COMBO_BOX(state->mode_combo), stored_mode))
-    gtk_combo_box_set_active_id(GTK_COMBO_BOX(state->mode_combo), "ROBOT36");
+  if (g_strcmp0(stored_mode, "MARTIN_M1") == 0)
+    gtk_drop_down_set_selected(GTK_DROP_DOWN(state->mode_combo), 1);
+  else if (g_strcmp0(stored_mode, "MARTIN_M2") == 0)
+    gtk_drop_down_set_selected(GTK_DROP_DOWN(state->mode_combo), 2);
+  else
+    gtk_drop_down_set_selected(GTK_DROP_DOWN(state->mode_combo), 0);
   g_free(stored_mode);
-  add_labeled_row(grid, "SSTV mode", state->mode_combo, row++);
-  g_signal_connect(state->mode_combo, "changed", G_CALLBACK(mode_changed), state);
+  g_signal_connect(state->mode_combo, "notify::selected",
+                   G_CALLBACK(mode_changed), state);
 
-  state->reply_position = gtk_combo_box_text_new();
-  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->reply_position), "left", "Top-left");
-  gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->reply_position), "right", "Top-right");
   stored_reply_position = g_key_file_get_string(config, "slowrx", "tx_reply_position", NULL);
-  if (stored_reply_position == NULL ||
-      !gtk_combo_box_set_active_id(GTK_COMBO_BOX(state->reply_position), stored_reply_position))
-    gtk_combo_box_set_active_id(GTK_COMBO_BOX(state->reply_position), "left");
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(state->reply_position),
+                             g_strcmp0(stored_reply_position, "right") == 0 ? 1 : 0);
   g_free(stored_reply_position);
-  add_labeled_row(grid, "Reply image position", state->reply_position, row++);
-  g_signal_connect(state->reply_position, "changed",
+  g_signal_connect(state->reply_position, "notify::selected",
                    G_CALLBACK(reply_position_changed), state);
 
   stored_call = g_key_file_get_string(config, "slowrx", "tx_callsign", NULL);
-  state->my_call = gtk_entry_new();
-  gtk_entry_set_placeholder_text(GTK_ENTRY(state->my_call), "Your callsign");
-  if (stored_call != NULL) gtk_entry_set_text(GTK_ENTRY(state->my_call), stored_call);
+  if (stored_call != NULL)
+    gtk_editable_set_text(GTK_EDITABLE(state->my_call), stored_call);
   g_free(stored_call);
-  add_labeled_row(grid, "Your callsign", state->my_call, row++);
   g_signal_connect(state->my_call, "changed", G_CALLBACK(callsign_changed), state);
 
-  state->fskid_toggle = gtk_toggle_button_new_with_label("FSKID");
-  gtk_widget_set_tooltip_text(state->fskid_toggle,
-                              "Append your callsign as FSKID immediately after the image.");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(state->fskid_toggle),
                                g_key_file_get_boolean(config, "slowrx", "tx_fskid", NULL));
-  add_labeled_row(grid, "Optional ID (after image)", state->fskid_toggle, row++);
   g_signal_connect(state->fskid_toggle, "toggled", G_CALLBACK(fskid_toggled), state);
 
-  state->their_call = gtk_entry_new();
-  gtk_entry_set_placeholder_text(GTK_ENTRY(state->their_call), "Other station (decoded FSK ID, if available)");
-  add_labeled_row(grid, "Station replied to", state->their_call, row++);
-
-  state->report = gtk_entry_new();
-  gtk_entry_set_placeholder_text(GTK_ENTRY(state->report), "Enter received report");
-  add_labeled_row(grid, "Received report", state->report, row++);
-
-  state->message = gtk_combo_box_text_new_with_entry();
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "TNX FER QSO");
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "TNX FER SSTV QSO 73");
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "73");
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "FB SIGS");
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "UR RST IS");
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(state->message), "CQ CQ CQ");
-  message_entry = gtk_bin_get_child(GTK_BIN(state->message));
   stored_message = g_key_file_get_string(config, "slowrx", "tx_message", NULL);
-  gtk_entry_set_text(GTK_ENTRY(message_entry),
-                     stored_message != NULL ? stored_message : "TNX FER QSO");
+  gtk_editable_set_text(GTK_EDITABLE(state->message),
+                        stored_message != NULL ? stored_message : "TNX FER QSO");
   g_free(stored_message);
-  add_labeled_row(grid, "Text / reply", state->message, row++);
-  g_signal_connect(message_entry, "changed", G_CALLBACK(message_changed), state);
+  g_signal_connect(state->message, "changed", G_CALLBACK(message_changed), state);
+  g_signal_connect(state->message_presets, "notify::selected",
+                   G_CALLBACK(message_preset_changed), state);
 
-  state->station_info = gtk_text_view_new();
-  gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(state->station_info), GTK_WRAP_WORD_CHAR);
-  gtk_widget_set_size_request(state->station_info, 260, 78);
-  station_scroll = gtk_scrolled_window_new(NULL, NULL);
-  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(station_scroll),
-                                 GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-  gtk_container_add(GTK_CONTAINER(station_scroll), state->station_info);
   stored_station_info = g_key_file_get_string(config, "slowrx", "tx_station_info", NULL);
   gtk_text_buffer_set_text(
       gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->station_info)),
       stored_station_info != NULL ? stored_station_info : "", -1);
   g_free(stored_station_info);
-  add_labeled_row(grid, "Station information (multi-line)", station_scroll, row++);
   g_signal_connect(gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->station_info)),
                    "changed", G_CALLBACK(station_info_changed), state);
 
   stored_font_size = g_key_file_get_integer(config, "slowrx", "tx_station_font_size", NULL);
   if (stored_font_size < 8 || stored_font_size > 28) stored_font_size = 14;
-  state->station_font_size = gtk_spin_button_new_with_range(8, 28, 1);
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(state->station_font_size), stored_font_size);
 
   stored_font_color = g_key_file_get_string(config, "slowrx", "tx_station_font_color", NULL);
   if (stored_font_color == NULL || !gdk_rgba_parse(&station_color, stored_font_color))
     gdk_rgba_parse(&station_color, "#ffffff");
   g_free(stored_font_color);
-  state->station_color = gtk_color_button_new_with_rgba(&station_color);
-
-  station_style = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-  size_label = gtk_label_new("Size (pt)");
-  color_label = gtk_label_new("Color");
-  gtk_box_pack_start(GTK_BOX(station_style), size_label, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(station_style), state->station_font_size, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(station_style), color_label, FALSE, FALSE, 4);
-  gtk_box_pack_start(GTK_BOX(station_style), state->station_color, FALSE, FALSE, 0);
-  add_labeled_row(grid, "Station text style", station_style, row++);
+  gtk_color_dialog_button_set_rgba(GTK_COLOR_DIALOG_BUTTON(state->station_color),
+                                   &station_color);
   g_signal_connect(state->station_font_size, "value-changed",
                    G_CALLBACK(station_font_size_changed), state);
-  g_signal_connect(state->station_color, "color-set",
+  g_signal_connect(state->station_color, "notify::rgba",
                    G_CALLBACK(station_color_set), state);
 
-  utc_caption = gtk_label_new("");
-  state->utc_label = utc_caption;
-  gtk_widget_set_halign(utc_caption, GTK_ALIGN_START);
-  add_labeled_row(grid, "UTC timestamp (automatic)", utc_caption, row++);
-
-  button = gtk_button_new_with_label("Update preview");
-  gtk_grid_attach(GTK_GRID(grid), button, 1, row++, 1, 1);
-  preview_box = gtk_frame_new("Composed image preview");
-  state->preview = gtk_image_new();
-  gtk_widget_set_size_request(state->preview, 320, 240);
-  gtk_container_add(GTK_CONTAINER(preview_box), state->preview);
-  gtk_grid_attach(GTK_GRID(grid), preview_box, 0, row, 2, 1);
-  g_signal_connect(button, "clicked", G_CALLBACK(preview_clicked), state);
-
-  state->status = gtk_label_new("No received image available. Choose a photo file.");
-  gtk_label_set_line_wrap(GTK_LABEL(state->status), TRUE);
-  gtk_widget_set_halign(state->status, GTK_ALIGN_START);
-  gtk_box_pack_start(GTK_BOX(state->panel), state->status, FALSE, FALSE, 8);
-
-  state->send_button = gtk_button_new_with_label("Transmit SSTV...");
-  gtk_widget_set_halign(state->send_button, GTK_ALIGN_END);
-  gtk_box_pack_end(GTK_BOX(state->panel), state->send_button, FALSE, FALSE, 8);
+  g_signal_connect(preview_button, "clicked", G_CALLBACK(preview_clicked), state);
   g_signal_connect(state->send_button, "clicked", G_CALLBACK(send_clicked), state);
 
-  gtk_combo_box_set_active(GTK_COMBO_BOX(state->source_combo), -1);
-  gtk_widget_show_all(state->panel);
   return state->panel;
 }
 
@@ -766,16 +980,15 @@ static void update_received(TxDialogState *state, GdkPixbuf *received,
                             const char *received_call, double snr_db,
                             gboolean snr_valid, gboolean prepare_reply) {
   GdkPixbuf *copy;
-  GtkWidget *message_entry;
   gchar *report;
-  int source_index;
+  guint source_index;
   gboolean use_received;
 
   if (state == NULL || received == NULL || state->destroyed) return;
   copy = gdk_pixbuf_copy(received);
   if (copy == NULL) return;
 
-  source_index = gtk_combo_box_get_active(GTK_COMBO_BOX(state->source_combo));
+  source_index = gtk_drop_down_get_selected(GTK_DROP_DOWN(state->source_combo));
   use_received = prepare_reply || source_index != 1 || state->source == NULL;
   if (use_received && state->source != NULL) {
     g_object_unref(state->source);
@@ -786,29 +999,27 @@ static void update_received(TxDialogState *state, GdkPixbuf *received,
   state->has_received = TRUE;
   if (use_received) state->source = g_object_ref(state->received);
 
-  gtk_entry_set_text(GTK_ENTRY(state->their_call),
-                     received_call != NULL ? received_call : "");
+  gtk_editable_set_text(GTK_EDITABLE(state->their_call),
+                        received_call != NULL ? received_call : "");
   report = (snr_valid && isfinite(snr_db))
              ? g_strdup_printf("SNR %+.1f dB", snr_db) : g_strdup("");
-  gtk_entry_set_text(GTK_ENTRY(state->report), report);
+  gtk_editable_set_text(GTK_EDITABLE(state->report), report);
   g_free(report);
 
   if (prepare_reply) {
     gchar *configured_message;
     state->reply_mode = TRUE;
-    message_entry = gtk_bin_get_child(GTK_BIN(state->message));
     configured_message = g_key_file_get_string(state->config, "slowrx",
                                                 "tx_message", NULL);
-    if (GTK_IS_ENTRY(message_entry))
-      gtk_entry_set_text(GTK_ENTRY(message_entry),
-                         configured_message != NULL ? configured_message
-                                                    : "TNX FER SSTV QSO 73");
+    gtk_editable_set_text(GTK_EDITABLE(state->message),
+                          configured_message != NULL ? configured_message
+                                                     : "TNX FER SSTV QSO 73");
     g_free(configured_message);
   }
 
   if (use_received) {
     state->changing_source = TRUE;
-    gtk_combo_box_set_active(GTK_COMBO_BOX(state->source_combo), 0);
+    gtk_drop_down_set_selected(GTK_DROP_DOWN(state->source_combo), 0);
     state->changing_source = FALSE;
   }
   compose_preview(state, NULL);

@@ -1,18 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-  <!-- interface-requires gtk+ 3.0 -->
+  <requires lib="gtk" version="4.0"/>
   <object class="GtkAboutDialog" id="window_about">
-    <property name="can_focus">False</property>
-    <property name="border_width">5</property>
     <property name="resizable">False</property>
-    <property name="type_hint">dialog</property>
-    <property name="has_resize_grip">False</property>
-    <property name="program_name">slowrx</property>
+    <property name="program-name">slowrx</property>
     <property name="version">0.01 alpha</property>
     <property name="copyright" translatable="yes">Oona Räisänen OH2EIQ (oona@kapsi.fi)</property>
     <property name="comments" translatable="yes">A shortwave listener's tool for decoding SSTV images.</property>
     <property name="website">https://windytan.github.io/slowrx/</property>
-    <property name="website_label" translatable="yes">GitHub page</property>
+    <property name="website-label" translatable="yes">GitHub page</property>
     <property name="license" translatable="yes">Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
 copyright notice and this permission notice appear in all copies.
@@ -24,28 +20,6 @@ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.</property>
-    <property name="license_type">custom</property>
-    <child internal-child="vbox">
-      <object class="GtkBox" id="window_about-vbox1">
-        <property name="can_focus">False</property>
-        <property name="orientation">vertical</property>
-        <property name="spacing">2</property>
-        <child internal-child="action_area">
-          <object class="GtkButtonBox" id="window_about-action_area1">
-            <property name="can_focus">False</property>
-            <property name="layout_style">end</property>
-          </object>
-          <packing>
-            <property name="expand">False</property>
-            <property name="fill">True</property>
-            <property name="pack_type">end</property>
-            <property name="position">0</property>
-          </packing>
-        </child>
-        <child>
-          <placeholder/>
-        </child>
-      </object>
-    </child>
+    <property name="license-type">custom</property>
   </object>
 </interface>

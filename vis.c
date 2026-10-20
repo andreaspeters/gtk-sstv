@@ -33,13 +33,11 @@ guchar GetVIS () {
   
   printf("Waiting for header\n");
 
-  gdk_threads_enter();
-  gtk_statusbar_push( GTK_STATUSBAR(gui.statusbar), 0, "Listening" );
-  gdk_threads_leave();
+  gui_dispatch(GUI_ACTION_STATUS, gui.statusbar, "Listening", NULL, 0, 0, FALSE);
 
   while ( TRUE ) {
 
-    if (Abort || ManualResync) return(0);
+    if (Abort || ManualResync || g_atomic_int_get(&ApplicationStopping)) return(0);
 
     // Read 10 ms from sound card
     readPcm(441);
@@ -122,10 +120,10 @@ guchar GetVIS () {
               printf("  Unknown VIS\n");
               gotvis = FALSE;
             } else {
-              gdk_threads_enter();
-              gtk_combo_box_set_active (GTK_COMBO_BOX(gui.combo_mode), VISmap[VIS]-1);
-              gtk_spin_button_set_value (GTK_SPIN_BUTTON(gui.spin_shift), CurrentPic.HedrShift);
-              gdk_threads_leave();
+              gui_dispatch(GUI_ACTION_COMBO_ACTIVE, gui.combo_mode, NULL, NULL,
+                           VISmap[VIS] - 1, 0, FALSE);
+              gui_dispatch(GUI_ACTION_SPIN_VALUE, gui.spin_shift, NULL, NULL,
+                           0, CurrentPic.HedrShift, FALSE);
               break;
             }
           }
@@ -133,19 +131,18 @@ guchar GetVIS () {
       }
     }
 
-    if (gotvis)
-     if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(gui.tog_rx))) break;
+    if (gotvis && gui_option_get_toggle(GUI_OPTION_RECEIVE)) break;
 
     // Manual start
     if (ManualActivated) {
 
-      gdk_threads_enter();
-      gtk_widget_set_sensitive( gui.frame_manual, FALSE );
-      gtk_widget_set_sensitive( gui.combo_card,   FALSE );
-      gdk_threads_leave();
+      gui_dispatch(GUI_ACTION_SENSITIVE, gui.frame_manual, NULL, NULL,
+                   0, 0, FALSE);
+      gui_dispatch(GUI_ACTION_SENSITIVE, gui.combo_card, NULL, NULL,
+                   0, 0, FALSE);
 
-      selmode   = gtk_combo_box_get_active (GTK_COMBO_BOX(gui.combo_mode)) + 1;
-      CurrentPic.HedrShift = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON(gui.spin_shift));
+      selmode   = gui_option_get_integer(GUI_OPTION_MODE_INDEX) + 1;
+      CurrentPic.HedrShift = gui_option_get_integer(GUI_OPTION_SHIFT);
       VIS = 0;
       for (i=0; i<0x80; i++) {
         if (VISmap[i] == selmode) {

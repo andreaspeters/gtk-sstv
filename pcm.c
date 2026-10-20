@@ -21,7 +21,13 @@ void readPcm(gint numsamples) {
   int    samplesread, i;
   gint32 tmp[BUFLEN];  // Holds one or two 16-bit channels, will be ANDed to single channel
 
+  if (g_atomic_int_get(&ApplicationStopping))
+    pthread_exit(NULL);
+
   samplesread = snd_pcm_readi(pcm.handle, tmp, (pcm.WindowPtr == 0 ? BUFLEN : numsamples));
+
+  if (g_atomic_int_get(&ApplicationStopping))
+    pthread_exit(NULL);
 
   if (samplesread < numsamples) {
     
@@ -29,7 +35,8 @@ void readPcm(gint numsamples) {
       printf("ALSA: buffer overrun\n");
     else if (samplesread < 0) {
       printf("ALSA error %d (%s)\n", samplesread, snd_strerror(samplesread));
-      gtk_widget_set_tooltip_text(gui.image_devstatus, "ALSA error");
+      gui_dispatch(GUI_ACTION_TOOLTIP, gui.image_devstatus, "ALSA error",
+                   NULL, 0, 0, FALSE);
       Abort = TRUE;
       pthread_exit(NULL);
     }
@@ -38,10 +45,9 @@ void readPcm(gint numsamples) {
     
     // On first appearance of error, update the status icon
     if (!pcm.BufferDrop) {
-      gdk_threads_enter();
-      gtk_image_set_from_stock(GTK_IMAGE(gui.image_devstatus),GTK_STOCK_DIALOG_WARNING,GTK_ICON_SIZE_SMALL_TOOLBAR);
-      gtk_widget_set_tooltip_text(gui.image_devstatus, "Device is dropping samples");
-      gdk_threads_leave();
+      gui_dispatch(GUI_ACTION_DEVICE_STATUS, gui.image_devstatus,
+                   "dialog-warning-symbolic", "Device is dropping samples",
+                   0, 0, FALSE);
       pcm.BufferDrop = TRUE;
     }
 
@@ -64,38 +70,45 @@ void readPcm(gint numsamples) {
 }
 
 void populateDeviceList() {
+  GtkStringList        *model;
   int                  card;
   char                *cardname;
+  gchar               *device;
   int                  numcards, row;
+  int                  selected;
 
-  gdk_threads_enter();
-  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(gui.combo_card), "default");
-  gdk_threads_leave();
+  model = gtk_string_list_new(NULL);
+  gtk_string_list_append(model, "default");
+  device = g_key_file_get_string(config, "slowrx", "device", NULL);
 
   numcards = 0;
   card     = -1;
   row      = 0;
+  selected = 0;
   do {
     snd_card_next(&card);
     if (card != -1) {
       row++;
       snd_card_get_name(card,&cardname);
-      gdk_threads_enter();
-      gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(gui.combo_card), cardname);
-      char *dev = g_key_file_get_string(config,"slowrx","device",NULL);
-      if (dev == NULL || strcmp(cardname, dev) == 0)
-        gtk_combo_box_set_active(GTK_COMBO_BOX(gui.combo_card), row);
-
-      gdk_threads_leave();
+      gtk_string_list_append(model, cardname);
+      if (device == NULL || strcmp(cardname, device) == 0)
+        selected = row;
+      free(cardname);
       numcards++;
     }
   } while (card != -1);
 
   if (numcards == 0) {
+    g_object_unref(model);
+    g_free(device);
     perror("No sound devices found!\n");
     exit(EXIT_FAILURE);
   }
-  
+
+  gtk_drop_down_set_model(GTK_DROP_DOWN(gui.combo_card), G_LIST_MODEL(model));
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(gui.combo_card), (guint)selected);
+  g_object_unref(model);
+  g_free(device);
 }
 
 // Initialize sound card

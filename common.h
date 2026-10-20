@@ -11,6 +11,8 @@ extern gboolean   Adaptive;
 extern gboolean  *HasSync;
 extern gboolean   ManualActivated;
 extern gboolean   ManualResync;
+extern gint       ApplicationStopping;
+extern gboolean   listen_thread_started;
 extern guchar    *StoredLum;
 extern pthread_t  thread1;
 extern guchar     VISmap[];
@@ -49,7 +51,7 @@ struct _GuiObjs {
   GtkWidget *frame_manual;
   GtkWidget *frame_slant;
   GtkWidget *grid_vu;
-  GtkWidget *iconview;
+  GtkWidget *saved_view;
   GtkWidget *image_devstatus;
   GtkWidget *image_pwr;
   GtkWidget *image_rx;
@@ -78,9 +80,43 @@ extern GdkPixbuf *pixbuf_SNR;
 extern GdkPixbuf *pixbuf_rx;
 extern GdkPixbuf *pixbuf_disp;
 
-extern GtkListStore *savedstore;
+void gui_image_set_pixbuf(GtkImage *image, GdkPixbuf *pixbuf);
+void gui_picture_set_pixbuf(GtkPicture *picture, GdkPixbuf *pixbuf);
+GdkTexture *gui_texture_new_from_pixbuf(GdkPixbuf *pixbuf);
+
+extern GListStore *savedstore;
 
 extern GKeyFile  *config;
+
+typedef enum {
+  GUI_ACTION_SENSITIVE,
+  GUI_ACTION_LABEL_TEXT,
+  GUI_ACTION_LABEL_MARKUP,
+  GUI_ACTION_STATUS,
+  GUI_ACTION_TOGGLE_ACTIVE,
+  GUI_ACTION_COMBO_ACTIVE,
+  GUI_ACTION_SPIN_VALUE,
+  GUI_ACTION_TOOLTIP,
+  GUI_ACTION_DEVICE_STATUS
+} GuiAction;
+
+typedef enum {
+  GUI_OPTION_RECEIVE = 1,
+  GUI_OPTION_FSK = 2,
+  GUI_OPTION_SLANT = 4,
+  GUI_OPTION_SAVE = 8,
+  GUI_OPTION_ADAPTIVE = 16,
+  GUI_OPTION_MODE_INDEX = 100,
+  GUI_OPTION_SHIFT = 101
+} GuiOption;
+
+void gui_dispatch(GuiAction action, GtkWidget *widget, const gchar *text,
+                  const gchar *detail, gint int_value, gdouble double_value,
+                  gboolean boolean_value);
+void gui_option_set_toggle(GuiOption option, gboolean active);
+gboolean gui_option_get_toggle(GuiOption option);
+void gui_option_set_integer(GuiOption option, gint value);
+gint gui_option_get_integer(GuiOption option);
 
 
 typedef struct _PicMeta PicMeta;
@@ -132,27 +168,30 @@ extern _ModeSpec ModeSpec[];
 
 double   power     (fftw_complex coeff);
 guchar   clip          (double a);
-void     createGUI     ();
+void     createGUI     (GtkApplication *application);
 double   deg2rad       (double Deg);
 double   FindSync      (guchar Mode, double Rate, int *Skip);
 void     GetFSK        (char *dest);
 gboolean GetVideo      (guchar Mode, double Rate, int Skip, gboolean Redraw);
 guchar   GetVIS        ();
 guint    GetBin        (double Freq, guint FFTLen);
-int      initPcmDevice ();
+int      initPcmDevice (char *wanteddevname);
 void     *Listen       ();
 void     populateDeviceList ();
 void     readPcm       (gint numsamples);
 void     saveCurrentPic();
 void     setVU         (double *Power, int FFTLen, int WinIdx, gboolean ShowWin);
+void     gui_set_image_pixbuf(GtkWidget *image, GdkPixbuf *pixbuf);
 
 void     evt_AbortRx       ();
-void     evt_changeDevices ();
-void     evt_chooseDir     ();
+void     evt_changeDevices (GObject *object, GParamSpec *pspec,
+                            gpointer user_data);
+void     evt_chooseDir     (GtkButton *button, gpointer user_data);
 void     evt_clearPix      ();
-void     evt_clickimg      ();
-void     evt_deletewindow  ();
+void     evt_clickimg      (GtkGestureClick *gesture, gint n_press,
+                            gdouble x, gdouble y, gpointer user_data);
+void     evt_deletewindow  (GtkWidget *widget, gpointer user_data);
 void     evt_GetAdaptive   ();
 void     evt_ManualStart   ();
-void     evt_show_about    ();
+void     evt_show_about    (GtkWidget *item, gpointer user_data);
 #endif

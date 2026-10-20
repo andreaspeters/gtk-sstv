@@ -1,43 +1,44 @@
-slowrx
-======
+# SSTV - Slowrx
 
-Slowrx is an SSTV decoder for Linux.
 
-Created by Oona Räisänen (OH2EIQ [at] sral.fi).
+Slowrx is an SSTV encoder/decoder for Linux.
+
+Original created by Oona Räisänen (OH2EIQ [at] sral.fi). I've added TX.
 
 http://windytan.github.io/slowrx/
 
-Features
---------
+## Features
 
-* Support for a multitude of modes (see `modespec.c` for a list)
-* Detect frequency-shifted signals – no need to fine-tune the radio
-* Automatic slant correction, also manual adjustments are simple
-* Adaptive noise reduction
-* Decode digital FSK ID
-* Save received pictures as PNG
-* Written in C99
+- Support for a multitude of modes (see `modespec.c` for a list)
+- Detect frequency-shifted signals – no need to fine-tune the radio
+- Automatic slant correction, also manual adjustments are simple
+- Adaptive noise reduction
+- Decode digital FSK ID
+- Save received pictures as PNG
+- Written in C99
 
-Requirements
-------------
+## Requirements
 
-* Linux
-* Alsa (`libasound2-dev`)
-* Gtk+ 3.4 (`libgtk-3-dev`)
-* FFTW 3 (`libfftw3-dev`)
+- Linux
+- Alsa (`libasound2-dev`)
+- Gtk+ 4 (`libgtk-4-dev`)
+- FFTW 3 (`libfftw3-dev`)
 
 And, obviously:
 
-* shortwave radio with SSB
-* computer with sound card
-* means of getting sound from radio to sound card
+- shortwave radio with SSB
+- computer with sound card
+- means of getting sound from radio to sound card
 
-Compiling
----------
+## Compiling
 
 `make`
 
-Running
--------
+## Running
 
 `./slowrx`
+
+## Screenshots
+
+![clipboard_20261021091125.bmp](vx_images/clipboard_20261021091125.bmp)
+![clipboard_20261021091312.bmp](vx_images/clipboard_20261021091312.bmp)

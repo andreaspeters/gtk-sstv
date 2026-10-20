@@ -24,6 +24,80 @@ static void evt_answer(GtkButton *button, gpointer user_data) {
   gtk_notebook_set_current_page(notebook, 1);
 }
 
+static void cache_widget_option(GtkWidget *widget, gpointer user_data) {
+  GuiOption option = GPOINTER_TO_INT(user_data);
+
+  if (option == GUI_OPTION_MODE_INDEX) {
+    gui_option_set_integer(option,
+        (gint)gtk_drop_down_get_selected(GTK_DROP_DOWN(widget)));
+  } else if (option == GUI_OPTION_SHIFT) {
+    gui_option_set_integer(option,
+        gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(widget)));
+  } else {
+    gui_option_set_toggle(option,
+        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)));
+  }
+}
+
+static void app_quit_action(GSimpleAction *action, GVariant *parameter,
+                            gpointer user_data) {
+  (void)action;
+  (void)parameter;
+  (void)user_data;
+  evt_deletewindow(NULL, NULL);
+}
+
+static void app_about_action(GSimpleAction *action, GVariant *parameter,
+                             gpointer user_data) {
+  (void)action;
+  (void)parameter;
+  (void)user_data;
+  evt_show_about(NULL, NULL);
+}
+
+static void add_application_action(GtkApplication *application,
+                                   const gchar *name, GCallback callback) {
+  GSimpleAction *action = g_simple_action_new(name, NULL);
+  g_signal_connect(action, "activate", callback, NULL);
+  g_action_map_add_action(G_ACTION_MAP(application), G_ACTION(action));
+  g_object_unref(action);
+}
+
+static void saved_picture_setup(GtkSignalListItemFactory *factory,
+                                GtkListItem *list_item,
+                                gpointer user_data) {
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+  GtkWidget *image = gtk_image_new();
+  GtkWidget *label = gtk_label_new(NULL);
+  (void)factory;
+  (void)user_data;
+
+  gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
+  gtk_widget_set_halign(label, GTK_ALIGN_CENTER);
+  gtk_box_append(GTK_BOX(box), image);
+  gtk_box_append(GTK_BOX(box), label);
+  gtk_list_item_set_child(list_item, box);
+}
+
+static void saved_picture_bind(GtkSignalListItemFactory *factory,
+                               GtkListItem *list_item,
+                               gpointer user_data) {
+  GtkWidget *box = gtk_list_item_get_child(list_item);
+  GtkWidget *image = gtk_widget_get_first_child(box);
+  GtkWidget *label = gtk_widget_get_next_sibling(image);
+  GtkStringObject *picture = GTK_STRING_OBJECT(
+      gtk_list_item_get_item(list_item));
+  GdkTexture *texture = g_object_get_data(G_OBJECT(picture),
+                                          "slowrx-thumbnail");
+  const gchar *id = gtk_string_object_get_string(picture);
+  (void)factory;
+  (void)user_data;
+
+  gtk_image_set_from_paintable(GTK_IMAGE(image),
+                               texture != NULL ? GDK_PAINTABLE(texture) : NULL);
+  gtk_label_set_text(GTK_LABEL(label), id != NULL ? id : "");
+}
+
 static void qso_timestamp(gchar **qso_date, gchar **time_on) {
   const gchar *stamp = CurrentPic.timestr;
   gboolean valid = stamp != NULL && strlen(stamp) >= 15 && stamp[8] == '-';
@@ -53,7 +127,7 @@ static void evt_log_adif(GtkButton *button, gpointer user_data) {
   (void)user_data;
 
   if (!CurrentPic.ReceivedValid || CurrentPic.RemoteCall[0] == '\0') {
-    gtk_statusbar_push(GTK_STATUSBAR(gui.statusbar), 0,
+    gtk_label_set_text(GTK_LABEL(gui.statusbar),
                        "Cannot log: no valid received SSTV callsign is available.");
     return;
   }
@@ -74,14 +148,14 @@ static void evt_log_adif(GtkButton *button, gpointer user_data) {
   g_free(station_call);
   g_free(comment);
   if (record == NULL) {
-    gtk_statusbar_push(GTK_STATUSBAR(gui.statusbar), 0,
+    gtk_label_set_text(GTK_LABEL(gui.statusbar),
                        error != NULL ? error->message : "Unable to build ADIF record.");
     g_clear_error(&error);
     return;
   }
 
   if (!adif_udp_send(ADIF_UDP_HOST, ADIF_UDP_PORT, record, &error)) {
-    gtk_statusbar_push(GTK_STATUSBAR(gui.statusbar), 0,
+    gtk_label_set_text(GTK_LABEL(gui.statusbar),
                        error != NULL ? error->message : "ADIF UDP send failed.");
     g_clear_error(&error);
     g_free(record);
@@ -89,15 +163,56 @@ static void evt_log_adif(GtkButton *button, gpointer user_data) {
   }
   status = g_strdup_printf("ADIF QSO datagram sent to %s:%u (UDP has no delivery acknowledgement).",
                            ADIF_UDP_HOST, ADIF_UDP_PORT);
-  gtk_statusbar_push(GTK_STATUSBAR(gui.statusbar), 0, status);
+  gtk_label_set_text(GTK_LABEL(gui.statusbar), status);
   g_free(status);
   g_free(record);
 }
 
-void createGUI() {
+static gboolean evt_close_main_window(GtkWindow *window, gpointer user_data) {
+  GApplication *application = g_application_get_default();
+  (void)window;
+  (void)user_data;
+  g_atomic_int_set(&ApplicationStopping, TRUE);
+  Abort = TRUE;
+  if (application != NULL)
+    g_application_quit(application);
+  return FALSE;
+}
+
+typedef struct {
+  GtkWidget *image;
+  GdkPixbuf *pixbuf;
+} ImageUpdate;
+
+static gboolean apply_image_update(gpointer data) {
+  ImageUpdate *update = data;
+  if (GTK_IS_PICTURE(update->image))
+    gui_picture_set_pixbuf(GTK_PICTURE(update->image), update->pixbuf);
+  else if (GTK_IS_IMAGE(update->image))
+    gui_image_set_pixbuf(GTK_IMAGE(update->image), update->pixbuf);
+  g_object_unref(update->image);
+  g_object_unref(update->pixbuf);
+  g_free(update);
+  return G_SOURCE_REMOVE;
+}
+
+void gui_set_image_pixbuf(GtkWidget *image, GdkPixbuf *pixbuf) {
+  ImageUpdate *update;
+  if (image == NULL || pixbuf == NULL)
+    return;
+  update = g_new(ImageUpdate, 1);
+  update->image = g_object_ref(image);
+  update->pixbuf = g_object_ref(pixbuf);
+  g_main_context_invoke(NULL, apply_image_update, update);
+}
+
+void createGUI(GtkApplication *application) {
 
   GtkBuilder *builder;
-  GtkWidget  *notebook, *tx_page, *tx_scrolled;
+  GtkWidget  *notebook;
+  GtkGesture *image_click;
+  GtkNoSelection *saved_selection;
+  GtkListItemFactory *saved_factory;
 
   builder = gtk_builder_new();
   gtk_builder_add_from_file(builder, "slowrx.ui",      NULL);
@@ -116,7 +231,7 @@ void createGUI() {
   gui.frame_manual    = GTK_WIDGET(gtk_builder_get_object(builder,"frame_manual"));
   gui.frame_slant     = GTK_WIDGET(gtk_builder_get_object(builder,"frame_slant"));
   gui.grid_vu         = GTK_WIDGET(gtk_builder_get_object(builder,"grid_vu"));
-  gui.iconview        = GTK_WIDGET(gtk_builder_get_object(builder,"SavedIconView"));
+  gui.saved_view      = GTK_WIDGET(gtk_builder_get_object(builder,"SavedGridView"));
   gui.image_devstatus = GTK_WIDGET(gtk_builder_get_object(builder,"image_devstatus"));
   gui.image_pwr       = GTK_WIDGET(gtk_builder_get_object(builder,"image_pwr"));
   gui.image_rx        = GTK_WIDGET(gtk_builder_get_object(builder,"image_rx"));
@@ -124,8 +239,7 @@ void createGUI() {
   gui.label_fskid     = GTK_WIDGET(gtk_builder_get_object(builder,"label_fskid"));
   gui.label_lastmode  = GTK_WIDGET(gtk_builder_get_object(builder,"label_lastmode"));
   gui.label_utc       = GTK_WIDGET(gtk_builder_get_object(builder,"label_utc"));
-  gui.menuitem_quit   = GTK_WIDGET(gtk_builder_get_object(builder,"menuitem_quit"));
-  gui.menuitem_about  = GTK_WIDGET(gtk_builder_get_object(builder,"menuitem_about"));
+
   gui.spin_shift      = GTK_WIDGET(gtk_builder_get_object(builder,"spin_shift"));
   gui.statusbar       = GTK_WIDGET(gtk_builder_get_object(builder,"statusbar"));
   gui.tog_adapt       = GTK_WIDGET(gtk_builder_get_object(builder,"tog_adapt"));
@@ -137,22 +251,88 @@ void createGUI() {
   gui.window_about    = GTK_WIDGET(gtk_builder_get_object(builder,"window_about"));
   gui.window_main     = GTK_WIDGET(gtk_builder_get_object(builder,"window_main"));
 
+  gtk_window_set_application(GTK_WINDOW(gui.window_main), application);
+  gtk_window_set_application(GTK_WINDOW(gui.window_about), application);
+  add_application_action(application, "quit", G_CALLBACK(app_quit_action));
+  add_application_action(application, "about", G_CALLBACK(app_about_action));
+  {
+    const gchar *quit_accels[] = {"<Primary>q", NULL};
+    gtk_application_set_accels_for_action(application, "app.quit", quit_accels);
+  }
+
   notebook = GTK_WIDGET(gtk_builder_get_object(builder,"notebook1"));
   if (gui.button_answer != NULL)
     gtk_widget_set_sensitive(gui.button_answer, FALSE);
   if (gui.button_adif != NULL)
     gtk_widget_set_sensitive(gui.button_adif, FALSE);
-  tx_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
-  gtk_container_set_border_width(GTK_CONTAINER(tx_page), 12);
-  gui.tx_panel = sstv_tx_panel_new(GTK_WINDOW(gui.window_main), config);
-  tx_scrolled = gtk_scrolled_window_new(NULL, NULL);
-  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(tx_scrolled),
-                                 GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-  gtk_container_add(GTK_CONTAINER(tx_scrolled), gui.tx_panel);
-  gtk_box_pack_start(GTK_BOX(tx_page), tx_scrolled, TRUE, TRUE, 0);
-  // Keep the complete TX controls reachable within the fixed-size main window.
-  gtk_notebook_insert_page(GTK_NOTEBOOK(notebook), tx_page,
-                           gtk_label_new("TX"), 1);
+
+  {
+    GtkWidget *main_box = GTK_WIDGET(gtk_builder_get_object(builder, "MainBox"));
+    GtkWidget *alignment = GTK_WIDGET(gtk_builder_get_object(builder, "alignment1"));
+    GtkWidget *menubar = GTK_WIDGET(gtk_builder_get_object(builder, "menubar1"));
+    GtkWidget *new_main_box;
+    GtkWidget *new_alignment;
+
+    if (GTK_IS_BOX(main_box) && GTK_IS_BOX(alignment) &&
+        GTK_IS_NOTEBOOK(notebook) && menubar != NULL &&
+        gtk_widget_get_parent(alignment) == main_box &&
+        gtk_widget_get_parent(notebook) == alignment &&
+        gtk_widget_get_parent(menubar) == main_box) {
+      /* Rebuild the two outer boxes in C: the Builder-created wrappers prevent
+       * GTK from assigning focus to editable controls in the notebook page. */
+      new_main_box = gtk_box_new(
+          gtk_orientable_get_orientation(GTK_ORIENTABLE(main_box)),
+          gtk_box_get_spacing(GTK_BOX(main_box)));
+      gtk_box_set_homogeneous(GTK_BOX(new_main_box),
+                              gtk_box_get_homogeneous(GTK_BOX(main_box)));
+      gtk_widget_set_name(new_main_box, gtk_widget_get_name(main_box));
+      gtk_widget_set_margin_start(new_main_box, gtk_widget_get_margin_start(main_box));
+      gtk_widget_set_margin_end(new_main_box, gtk_widget_get_margin_end(main_box));
+      gtk_widget_set_margin_top(new_main_box, gtk_widget_get_margin_top(main_box));
+      gtk_widget_set_margin_bottom(new_main_box, gtk_widget_get_margin_bottom(main_box));
+      gtk_widget_set_halign(new_main_box, gtk_widget_get_halign(main_box));
+      gtk_widget_set_valign(new_main_box, gtk_widget_get_valign(main_box));
+      gtk_widget_set_hexpand(new_main_box, gtk_widget_get_hexpand(main_box));
+      gtk_widget_set_vexpand(new_main_box, gtk_widget_get_vexpand(main_box));
+      gtk_widget_set_sensitive(new_main_box, gtk_widget_get_sensitive(main_box));
+      gtk_widget_set_focusable(new_main_box, gtk_widget_get_focusable(main_box));
+      gtk_widget_set_visible(new_main_box, gtk_widget_get_visible(main_box));
+
+      new_alignment = gtk_box_new(
+          gtk_orientable_get_orientation(GTK_ORIENTABLE(alignment)),
+          gtk_box_get_spacing(GTK_BOX(alignment)));
+      gtk_box_set_homogeneous(GTK_BOX(new_alignment),
+                              gtk_box_get_homogeneous(GTK_BOX(alignment)));
+      gtk_widget_set_name(new_alignment, gtk_widget_get_name(alignment));
+      gtk_widget_set_margin_start(new_alignment, gtk_widget_get_margin_start(alignment));
+      gtk_widget_set_margin_end(new_alignment, gtk_widget_get_margin_end(alignment));
+      gtk_widget_set_margin_top(new_alignment, gtk_widget_get_margin_top(alignment));
+      gtk_widget_set_margin_bottom(new_alignment, gtk_widget_get_margin_bottom(alignment));
+      gtk_widget_set_halign(new_alignment, gtk_widget_get_halign(alignment));
+      gtk_widget_set_valign(new_alignment, gtk_widget_get_valign(alignment));
+      gtk_widget_set_hexpand(new_alignment, gtk_widget_get_hexpand(alignment));
+      gtk_widget_set_vexpand(new_alignment, gtk_widget_get_vexpand(alignment));
+      gtk_widget_set_sensitive(new_alignment, gtk_widget_get_sensitive(alignment));
+      gtk_widget_set_focusable(new_alignment, gtk_widget_get_focusable(alignment));
+      gtk_widget_set_visible(new_alignment, gtk_widget_get_visible(alignment));
+
+      g_object_ref(notebook);
+      g_object_ref(menubar);
+      gtk_box_remove(GTK_BOX(alignment), notebook);
+      gtk_box_remove(GTK_BOX(main_box), menubar);
+      gtk_box_remove(GTK_BOX(main_box), alignment);
+      gtk_box_append(GTK_BOX(new_alignment), notebook);
+      gtk_box_append(GTK_BOX(new_main_box), menubar);
+      gtk_box_append(GTK_BOX(new_main_box), new_alignment);
+      gtk_window_set_child(GTK_WINDOW(gui.window_main), new_main_box);
+      g_object_unref(notebook);
+      g_object_unref(menubar);
+    } else {
+      g_warning("Could not rebuild the GtkBuilder window containers for focus");
+    }
+  }
+
+  gui.tx_panel = sstv_tx_panel_new(builder, GTK_WINDOW(gui.window_main), config);
 
   g_signal_connect        (gui.button_abort,  "clicked",      G_CALLBACK(evt_AbortRx),       NULL);
   if (gui.button_answer != NULL)
@@ -162,35 +342,70 @@ void createGUI() {
   g_signal_connect        (gui.button_browse, "clicked",      G_CALLBACK(evt_chooseDir),     NULL);
   g_signal_connect        (gui.button_clear,  "clicked",      G_CALLBACK(evt_clearPix),      NULL);
   g_signal_connect        (gui.button_start,  "clicked",      G_CALLBACK(evt_ManualStart),   NULL);
-  g_signal_connect        (gui.combo_card,    "changed",      G_CALLBACK(evt_changeDevices), NULL);
-  g_signal_connect        (gui.eventbox_img,  "button-press-event",G_CALLBACK(evt_clickimg),     NULL);
-  g_signal_connect        (gui.menuitem_quit, "activate",     G_CALLBACK(evt_deletewindow),  NULL);
-  g_signal_connect        (gui.menuitem_about,"activate",     G_CALLBACK(evt_show_about),    NULL);
-  g_signal_connect_swapped(gui.tog_adapt,     "toggled",      G_CALLBACK(evt_GetAdaptive),   NULL);
-  g_signal_connect        (gui.window_main,   "delete-event", G_CALLBACK(evt_deletewindow),  NULL);
+  g_signal_connect        (gui.combo_card,    "notify::selected",
+                           G_CALLBACK(evt_changeDevices), NULL);
+  image_click = gtk_gesture_click_new();
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(image_click), GDK_BUTTON_PRIMARY);
+  gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(image_click), GTK_PHASE_CAPTURE);
+  gtk_widget_add_controller(gui.eventbox_img, GTK_EVENT_CONTROLLER(image_click));
+  g_signal_connect(image_click, "pressed", G_CALLBACK(evt_clickimg), NULL);
 
-  savedstore = GTK_LIST_STORE(gtk_icon_view_get_model(GTK_ICON_VIEW(gui.iconview)));
+  g_signal_connect_swapped(gui.tog_adapt,     "toggled",      G_CALLBACK(evt_GetAdaptive),   NULL);
+  g_signal_connect(gui.tog_rx, "toggled", G_CALLBACK(cache_widget_option),
+                   GINT_TO_POINTER(GUI_OPTION_RECEIVE));
+  g_signal_connect(gui.tog_fsk, "toggled", G_CALLBACK(cache_widget_option),
+                   GINT_TO_POINTER(GUI_OPTION_FSK));
+  g_signal_connect(gui.tog_slant, "toggled", G_CALLBACK(cache_widget_option),
+                   GINT_TO_POINTER(GUI_OPTION_SLANT));
+  g_signal_connect(gui.tog_save, "toggled", G_CALLBACK(cache_widget_option),
+                   GINT_TO_POINTER(GUI_OPTION_SAVE));
+  g_signal_connect(gui.tog_adapt, "toggled", G_CALLBACK(cache_widget_option),
+                   GINT_TO_POINTER(GUI_OPTION_ADAPTIVE));
+  g_signal_connect(gui.combo_mode, "notify::selected", G_CALLBACK(cache_widget_option),
+                   GINT_TO_POINTER(GUI_OPTION_MODE_INDEX));
+  g_signal_connect(gui.spin_shift, "value-changed", G_CALLBACK(cache_widget_option),
+                   GINT_TO_POINTER(GUI_OPTION_SHIFT));
+  g_signal_connect        (gui.window_main,   "close-request", G_CALLBACK(evt_close_main_window), NULL);
+
+  savedstore = g_list_store_new(GTK_TYPE_STRING_OBJECT);
+  saved_selection = gtk_no_selection_new(G_LIST_MODEL(savedstore));
+  saved_factory = gtk_signal_list_item_factory_new();
+  g_signal_connect(saved_factory, "setup", G_CALLBACK(saved_picture_setup), NULL);
+  g_signal_connect(saved_factory, "bind", G_CALLBACK(saved_picture_bind), NULL);
+  gtk_grid_view_set_factory(GTK_GRID_VIEW(gui.saved_view),
+                            GTK_LIST_ITEM_FACTORY(saved_factory));
+  gtk_grid_view_set_model(GTK_GRID_VIEW(gui.saved_view),
+                          GTK_SELECTION_MODEL(saved_selection));
+  g_object_unref(saved_factory);
+  g_object_unref(saved_selection);
 
   pixbuf_rx   = gdk_pixbuf_new (GDK_COLORSPACE_RGB, FALSE, 8, 320, 256);
   gdk_pixbuf_fill(pixbuf_rx, 0x000000ff);
   pixbuf_disp = gdk_pixbuf_scale_simple (pixbuf_rx, 500, 400, GDK_INTERP_BILINEAR);
-  gtk_image_set_from_pixbuf(GTK_IMAGE(gui.image_rx), pixbuf_disp);
+  gui_picture_set_pixbuf(GTK_PICTURE(gui.image_rx), pixbuf_disp);
 
   pixbuf_PWR = gdk_pixbuf_new (GDK_COLORSPACE_RGB, FALSE, 8, 100, 30);
   pixbuf_SNR = gdk_pixbuf_new (GDK_COLORSPACE_RGB, FALSE, 8, 100, 30);
 
-  gtk_combo_box_set_active(GTK_COMBO_BOX(gui.combo_mode), 0);
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(gui.combo_mode), 0);
+  cache_widget_option(gui.tog_rx, GINT_TO_POINTER(GUI_OPTION_RECEIVE));
+  cache_widget_option(gui.tog_fsk, GINT_TO_POINTER(GUI_OPTION_FSK));
+  cache_widget_option(gui.tog_slant, GINT_TO_POINTER(GUI_OPTION_SLANT));
+  cache_widget_option(gui.tog_save, GINT_TO_POINTER(GUI_OPTION_SAVE));
+  cache_widget_option(gui.tog_adapt, GINT_TO_POINTER(GUI_OPTION_ADAPTIVE));
+  cache_widget_option(gui.combo_mode, GINT_TO_POINTER(GUI_OPTION_MODE_INDEX));
+  cache_widget_option(gui.spin_shift, GINT_TO_POINTER(GUI_OPTION_SHIFT));
 
   if (g_key_file_get_string(config,"slowrx","rxdir",NULL) != NULL) {
-    gtk_entry_set_text(GTK_ENTRY(gui.entry_picdir),g_key_file_get_string(config,"slowrx","rxdir",NULL));
+    gtk_editable_set_text(GTK_EDITABLE(gui.entry_picdir),g_key_file_get_string(config,"slowrx","rxdir",NULL));
   } else {
     g_key_file_set_string(config,"slowrx","rxdir",g_get_home_dir());
-    gtk_entry_set_text(GTK_ENTRY(gui.entry_picdir),g_key_file_get_string(config,"slowrx","rxdir",NULL));
+    gtk_editable_set_text(GTK_EDITABLE(gui.entry_picdir),g_key_file_get_string(config,"slowrx","rxdir",NULL));
   }
 
   //setVU(0, 6);
 
-  gtk_widget_show_all  (gui.window_main);
+  gtk_window_present(GTK_WINDOW(gui.window_main));
 
 }
 
@@ -200,12 +415,20 @@ void setVU (double *Power, int FFTLen, int WinIdx, gboolean ShowWin) {
   guchar       *pixelsPWR, *pixelsSNR, *pPWR, *pSNR;
   unsigned int rowstridePWR,rowstrideSNR, LoBin, HiBin, i;
   double       logpow,p;
+  GdkPixbuf   *power_pixbuf, *snr_pixbuf;
 
-  rowstridePWR = gdk_pixbuf_get_rowstride (pixbuf_PWR);
-  pixelsPWR    = gdk_pixbuf_get_pixels    (pixbuf_PWR);
+  power_pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8, W, H);
+  snr_pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8, W, H);
+  if (power_pixbuf == NULL || snr_pixbuf == NULL) {
+    g_clear_object(&power_pixbuf);
+    g_clear_object(&snr_pixbuf);
+    return;
+  }
+  rowstridePWR = gdk_pixbuf_get_rowstride(power_pixbuf);
+  pixelsPWR = gdk_pixbuf_get_pixels(power_pixbuf);
   
-  rowstrideSNR = gdk_pixbuf_get_rowstride (pixbuf_SNR);
-  pixelsSNR    = gdk_pixbuf_get_pixels    (pixbuf_SNR);
+  rowstrideSNR = gdk_pixbuf_get_rowstride(snr_pixbuf);
+  pixelsSNR = gdk_pixbuf_get_pixels(snr_pixbuf);
 
   for (y=0; y<H; y++) {
     for (x=0; x<W; x++) {
@@ -257,31 +480,48 @@ void setVU (double *Power, int FFTLen, int WinIdx, gboolean ShowWin) {
     }
   }
 
-  gdk_threads_enter();
-  gtk_image_set_from_pixbuf(GTK_IMAGE(gui.image_pwr), pixbuf_PWR);
-  gtk_image_set_from_pixbuf(GTK_IMAGE(gui.image_snr), pixbuf_SNR);
-  gdk_threads_leave();
+  gui_set_image_pixbuf(gui.image_pwr, power_pixbuf);
+  gui_set_image_pixbuf(gui.image_snr, snr_pixbuf);
+  g_object_unref(power_pixbuf);
+  g_object_unref(snr_pixbuf);
 
 }
 
-void evt_chooseDir() {
-  GtkWidget *dialog;
-  dialog = gtk_file_chooser_dialog_new ("Select folder",
-                                      GTK_WINDOW(gui.window_main),
-                                      GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER,
-                                      GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-                                      GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
-                                      NULL);
-  
-  if (gtk_dialog_run (GTK_DIALOG (dialog)) == GTK_RESPONSE_ACCEPT) {
-    g_key_file_set_string(config,"slowrx","rxdir",gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
-    gtk_entry_set_text(GTK_ENTRY(gui.entry_picdir),gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
+static void evt_choose_dir_response(GObject *source_object,
+                                    GAsyncResult *result,
+                                    gpointer user_data) {
+  GFile *folder;
+  gchar *path;
+  (void)user_data;
+
+  folder = gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(source_object),
+                                                result, NULL);
+  if (folder == NULL) return;
+  path = g_file_get_path(folder);
+  if (path != NULL) {
+    g_key_file_set_string(config, "slowrx", "rxdir", path);
+    gtk_editable_set_text(GTK_EDITABLE(gui.entry_picdir), path);
+    g_free(path);
   }
-
-  gtk_widget_destroy (dialog);
+  g_object_unref(folder);
 }
 
-void evt_show_about() {
-  gtk_dialog_run(GTK_DIALOG(gui.window_about));
-  gtk_widget_hide(gui.window_about);
+void evt_chooseDir(GtkButton *button, gpointer user_data) {
+  GtkFileDialog *dialog;
+  (void)button;
+  (void)user_data;
+
+  dialog = gtk_file_dialog_new();
+  gtk_file_dialog_set_title(dialog, "Select folder");
+  gtk_file_dialog_set_accept_label(dialog, "Open");
+  gtk_file_dialog_set_modal(dialog, TRUE);
+  gtk_file_dialog_select_folder(dialog, GTK_WINDOW(gui.window_main), NULL,
+                                evt_choose_dir_response, NULL);
+  g_object_unref(dialog);
+}
+
+void evt_show_about(GtkWidget *item, gpointer user_data) {
+  (void)item;
+  (void)user_data;
+  gtk_window_present(GTK_WINDOW(gui.window_about));
 }

@@ -1,8 +1,8 @@
 CC = gcc
 
-CFLAGS    = -Wall -Wextra -std=gnu99 -pedantic -g -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_3_4
-GTKCFLAGS = `pkg-config --cflags gtk+-3.0`
-GTKLIBS   = `pkg-config --libs gtk+-3.0`
+CFLAGS    = -Wall -Wextra -std=gnu99 -pedantic -g
+GTKCFLAGS = `pkg-config --cflags gtk4`
+GTKLIBS   = `pkg-config --libs gtk4`
 
 OFLAGS = -O3
 
@@ -51,8 +51,8 @@ test-encoder:
 test-compose:
 	@mkdir -p "$(HOME)/.hermes/cache/scratch"; \
 	tmp=$$(mktemp "$(HOME)/.hermes/cache/scratch/slowrx-compose-test.XXXXXX"); \
-	$(CC) -Wall -Wextra -std=gnu99 -pedantic $$(pkg-config --cflags gtk+-3.0) -I. \
-	  -o "$$tmp" test_compose.c compose.c $$(pkg-config --libs gtk+-3.0) -lm && "$$tmp"; \
+	$(CC) -Wall -Wextra -std=gnu99 -pedantic $$(pkg-config --cflags gtk4) -I. \
+	  -o "$$tmp" test_compose.c compose.c $$(pkg-config --libs gtk4) -lm && "$$tmp"; \
 	result=$$?; rm -f "$$tmp"; exit $$result
 
 .PHONY: test-txaudio
