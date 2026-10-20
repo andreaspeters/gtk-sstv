@@ -24,4 +24,12 @@ gboolean sstv_encode_mode(GdkPixbuf *image, SstvMode mode,
                           SstvPcm *pcm, GError **error);
 const gchar *sstv_mode_name(SstvMode mode);
 
+/* Encode FSK ID data (6-bit bytes, LSB first) as 44.1 kHz mono S16.
+ * The returned samples belong to the caller and must be freed with free().
+ * Returns FALSE and sets error on invalid input or allocation failure.
+ * FSKID format: sync bytes (0x20, 0x2A), 6-bit data with LSB-first,
+ *               add 0x20 for ASCII, terminator 0x01.
+ */
+gboolean sstv_encode_fskid(const gchar *callsign, SstvPcm *pcm, GError **error);
+
 #endif

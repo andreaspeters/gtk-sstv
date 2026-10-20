@@ -1,6 +1,8 @@
 #include "txdialog.h"
 
+#include <errno.h>
 #include <gtk/gtk.h>
+#include <glib/gstdio.h>
 #include <alsa/asoundlib.h>
 #include <math.h>
 #include <stdlib.h>
@@ -25,6 +27,7 @@ typedef struct {
   GtkWidget *status;
   GtkWidget *send_button;
   GtkWidget *audio_device;
+  GtkWidget *fskid_toggle;
   GtkWidget *mode_combo;
   GdkPixbuf *received;
   GdkPixbuf *source;
@@ -99,6 +102,12 @@ static void device_changed(GtkComboBox *combo, gpointer user_data) {
   if (id != NULL) {
     g_key_file_set_string(state->config, "slowrx", "tx_device", id);
   }
+}
+
+static void fskid_toggled(GtkToggleButton *button, gpointer user_data) {
+  TxDialogState *state = user_data;
+  g_key_file_set_boolean(state->config, "slowrx", "tx_fskid",
+                         gtk_toggle_button_get_active(button));
 }
 
 static void mode_changed(GtkComboBox *combo, gpointer user_data) {
@@ -247,6 +256,117 @@ static gpointer playback_thread(gpointer data) {
   return NULL;
 }
 
+static gboolean append_fskid_audio(SstvPcm *image_pcm, const gchar *callsign,
+                                   GError **error) {
+  SstvPcm id_pcm = { NULL, 0 };
+  gint16 *combined;
+  size_t combined_length;
+
+  if (!sstv_encode_fskid(callsign, &id_pcm, error)) return FALSE;
+  if (id_pcm.length > G_MAXSIZE - image_pcm->length ||
+      image_pcm->length + id_pcm.length > G_MAXSIZE / sizeof(*combined)) {
+    free(id_pcm.samples);
+    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-tx"), 1,
+                        "Combined SSTV and FSKID audio buffer is too large");
+    return FALSE;
+  }
+
+  combined_length = image_pcm->length + id_pcm.length;
+  combined = realloc(image_pcm->samples, combined_length * sizeof(*combined));
+  if (combined == NULL) {
+    free(id_pcm.samples);
+    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-tx"), 2,
+                        "Unable to append FSKID audio to SSTV image");
+    return FALSE;
+  }
+  memcpy(combined + image_pcm->length, id_pcm.samples,
+         id_pcm.length * sizeof(*combined));
+  free(id_pcm.samples);
+  image_pcm->samples = combined;
+  image_pcm->length = combined_length;
+  return TRUE;
+}
+
+static gchar *filename_component(const gchar *text) {
+  gchar *component = g_strdup(text != NULL ? text : "");
+  gchar *p;
+  for (p = component; *p != '\0'; ++p) {
+    if (!g_ascii_isalnum((guchar)*p) && *p != '-' && *p != '_') *p = '_';
+  }
+  return component;
+}
+
+static gboolean save_transmit_image(GKeyFile *config, GdkPixbuf *image,
+                                    SstvMode mode, const gchar *callsign,
+                                    gchar **saved_path, GError **error) {
+  gchar *rx_directory = NULL, *tx_directory = NULL;
+  gchar *stamp = NULL, *mode_part = NULL, *call_part = NULL;
+  gchar *filename = NULL, *path = NULL;
+  GDateTime *now = NULL;
+  GdkPixbuf *mode_image = NULL;
+  int height = mode == SSTV_MODE_ROBOT36 ? 240 : 256;
+  guint suffix = 0;
+  gboolean saved = FALSE;
+
+  if (saved_path != NULL) *saved_path = NULL;
+  rx_directory = g_key_file_get_string(config, "slowrx", "rxdir", NULL);
+  if (rx_directory == NULL || *rx_directory == '\0') {
+    g_free(rx_directory);
+    rx_directory = g_strdup(g_get_home_dir());
+  }
+  tx_directory = g_build_filename(rx_directory, "tx", NULL);
+  if (g_mkdir_with_parents(tx_directory, 0755) != 0) {
+    int saved_errno = errno;
+    g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(saved_errno),
+                "Cannot create TX log directory '%s': %s", tx_directory,
+                g_strerror(saved_errno));
+    goto cleanup;
+  }
+
+  mode_image = gdk_pixbuf_scale_simple(image, 320, height, GDK_INTERP_BILINEAR);
+  if (mode_image == NULL) {
+    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-tx"), 3,
+                        "Unable to create the mode-sized TX image for logging");
+    goto cleanup;
+  }
+
+  now = g_date_time_new_now_utc();
+  stamp = g_date_time_format(now, "%Y%m%d-%H%M%S");
+  mode_part = filename_component(sstv_mode_name(mode));
+  call_part = filename_component(callsign);
+  do {
+    g_free(filename);
+    g_free(path);
+    if (suffix == 0) {
+      filename = g_strdup_printf("%s-%06d_%s_%s.png", stamp,
+                                 g_date_time_get_microsecond(now),
+                                 mode_part, call_part);
+    } else {
+      filename = g_strdup_printf("%s-%06d_%s_%s-%u.png", stamp,
+                                 g_date_time_get_microsecond(now),
+                                 mode_part, call_part, suffix);
+    }
+    path = g_build_filename(tx_directory, filename, NULL);
+    ++suffix;
+  } while (g_file_test(path, G_FILE_TEST_EXISTS));
+
+  if (!gdk_pixbuf_save(mode_image, path, "png", error, NULL)) goto cleanup;
+  if (saved_path != NULL) *saved_path = g_strdup(path);
+  saved = TRUE;
+
+cleanup:
+  if (mode_image != NULL) g_object_unref(mode_image);
+  if (now != NULL) g_date_time_unref(now);
+  g_free(rx_directory);
+  g_free(tx_directory);
+  g_free(stamp);
+  g_free(mode_part);
+  g_free(call_part);
+  g_free(filename);
+  g_free(path);
+  return saved;
+}
+
 static void begin_transmission(TxDialogState *state) {
   GdkPixbuf *composed = NULL;
   SstvPcm pcm = { NULL, 0 };
@@ -262,6 +382,8 @@ static void begin_transmission(TxDialogState *state) {
   gchar *confirm_title;
   gchar *confirm_text;
   gchar *status_text;
+  gchar *saved_path = NULL;
+  gboolean append_id;
 
   if (*my_call == '\0') {
     set_status(state, "Enter your own callsign before preparing the SSTV image.");
@@ -270,6 +392,7 @@ static void begin_transmission(TxDialogState *state) {
   }
   audio_device = gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->audio_device));
   mode = selected_mode(state);
+  append_id = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(state->fskid_toggle));
   if (!compose_preview(state, &composed)) {
     return;
   }
@@ -279,16 +402,24 @@ static void begin_transmission(TxDialogState *state) {
     g_object_unref(composed);
     return;
   }
-  g_object_unref(composed);
+  if (append_id && !append_fskid_audio(&pcm, my_call, &error)) {
+    set_status(state, error != NULL ? error->message : "FSKID encoding failed.");
+    if (error != NULL) g_error_free(error);
+    free(pcm.samples);
+    g_object_unref(composed);
+    return;
+  }
 
-  confirm_title = g_strdup_printf("Ready to send a %s SSTV picture?",
-                                  sstv_mode_name(mode));
+  confirm_title = g_strdup_printf("Ready to send a %s SSTV picture%s?",
+                                  sstv_mode_name(mode),
+                                  append_id ? " with FSKID after image" : "");
   confirm = gtk_message_dialog_new(state->parent, GTK_DIALOG_MODAL,
                                    GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
                                    "%s", confirm_title);
   g_free(confirm_title);
-  confirm_text = g_strdup_printf("This plays 44.1 kHz audio on '%s'. If that output is connected to a radio, use the matching SSTV mode and frequency and key PTT/VOX only when ready. slowrx does not control PTT.",
-                                 audio_device != NULL ? audio_device : "default");
+  confirm_text = g_strdup_printf("This plays 44.1 kHz audio on '%s'. %s If that output is connected to a radio, use the matching SSTV mode and frequency and key PTT/VOX only when ready. slowrx does not control PTT.",
+                                 audio_device != NULL ? audio_device : "default",
+                                 append_id ? "Your FSKID callsign will follow the image." : "No FSKID will be sent.");
   gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(confirm), "%s",
                                            confirm_text);
   g_free(confirm_text);
@@ -302,18 +433,31 @@ static void begin_transmission(TxDialogState *state) {
       !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(check))) {
     gtk_widget_destroy(confirm);
     free(pcm.samples);
+    g_object_unref(composed);
     set_status(state, "Transmission cancelled.");
     return;
   }
   gtk_widget_destroy(confirm);
 
+  if (!save_transmit_image(state->config, composed, mode, my_call,
+                           &saved_path, &error)) {
+    set_status(state, error != NULL ? error->message : "Unable to save TX image.");
+    if (error != NULL) g_error_free(error);
+    free(pcm.samples);
+    g_object_unref(composed);
+    return;
+  }
+  g_object_unref(composed);
+
   state->playing = TRUE;
   gtk_widget_set_sensitive(state->send_button, FALSE);
-  status_text = g_strdup_printf("Transmitting %s SSTV audio to '%s'...",
-                                sstv_mode_name(mode),
+  status_text = g_strdup_printf("Saved TX image: %s. Transmitting %s SSTV%s audio to '%s'...",
+                                saved_path, sstv_mode_name(mode),
+                                append_id ? " with FSKID after image" : "",
                                 audio_device != NULL ? audio_device : "default");
   set_status(state, status_text);
   g_free(status_text);
+  g_free(saved_path);
 
   job = g_new0(TxPlaybackJob, 1);
   job->panel = g_object_ref(state->panel);
@@ -418,6 +562,14 @@ GtkWidget *sstv_tx_panel_new(GtkWindow *parent, GKeyFile *config) {
   g_free(stored_call);
   add_labeled_row(grid, "Your callsign", state->my_call, row++);
   g_signal_connect(state->my_call, "changed", G_CALLBACK(callsign_changed), state);
+
+  state->fskid_toggle = gtk_toggle_button_new_with_label("FSKID");
+  gtk_widget_set_tooltip_text(state->fskid_toggle,
+                              "Append your callsign as FSKID immediately after the image.");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(state->fskid_toggle),
+                               g_key_file_get_boolean(config, "slowrx", "tx_fskid", NULL));
+  add_labeled_row(grid, "Optional ID (after image)", state->fskid_toggle, row++);
+  g_signal_connect(state->fskid_toggle, "toggled", G_CALLBACK(fskid_toggled), state);
 
   state->their_call = gtk_entry_new();
   gtk_entry_set_placeholder_text(GTK_ENTRY(state->their_call), "Other station (decoded FSK ID, if available)");

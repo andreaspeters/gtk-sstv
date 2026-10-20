@@ -72,6 +72,69 @@ static int check_martin_mode(GdkPixbuf *image, SstvMode mode,
   return 1;
 }
 
+static int check_fskid(void) {
+  static const int expected_header_hz[18] = {
+    2100, 2100, 2100, 2100, 2100, 1900,
+    2100, 1900, 2100, 1900, 2100, 1900,
+    2100, 1900, 1900, 1900, 2100, 1900
+  };
+  const char *callsign = "n0call";
+  SstvPcm pcm = { NULL, 0 };
+  SstvPcm invalid = { NULL, 0 };
+  GError *error = NULL;
+  size_t expected_length;
+  size_t bit_index;
+
+  expected_length = (size_t)llround((2 + strlen(callsign) + 1) * 6 *
+                                    0.022 * SAMPLE_RATE);
+  if (!sstv_encode_fskid(callsign, &pcm, &error)) {
+    fprintf(stderr, "FSKID encoding failed: %s\n",
+            error != NULL ? error->message : "no error detail");
+    if (error != NULL) g_error_free(error);
+    return 0;
+  }
+  if (pcm.samples == NULL || pcm.length != expected_length) {
+    fprintf(stderr, "FSKID length incorrect (%zu samples, expected %zu)\n",
+            pcm.length, expected_length);
+    free(pcm.samples);
+    return 0;
+  }
+
+  for (bit_index = 0; bit_index < 18; ++bit_index) {
+    size_t start = (size_t)llround(bit_index * 0.022 * SAMPLE_RATE) + 80;
+    int measured = approx_frequency(pcm.samples, start, 800);
+    if (measured < expected_header_hz[bit_index] - 65 ||
+        measured > expected_header_hz[bit_index] + 65) {
+      fprintf(stderr, "FSKID header/callsign bit %zu incorrect (%d Hz)\n",
+              bit_index, measured);
+      free(pcm.samples);
+      return 0;
+    }
+  }
+  for (bit_index = 0; bit_index < 6; ++bit_index) {
+    size_t symbol = (2 + strlen(callsign)) * 6 + bit_index;
+    size_t start = (size_t)llround(symbol * 0.022 * SAMPLE_RATE) + 80;
+    int expected_hz = bit_index == 0 ? 1900 : 2100;
+    int measured = approx_frequency(pcm.samples, start, 800);
+    if (measured < expected_hz - 65 || measured > expected_hz + 65) {
+      fprintf(stderr, "FSKID terminator bit %zu incorrect (%d Hz)\n",
+              bit_index, measured);
+      free(pcm.samples);
+      return 0;
+    }
+  }
+  free(pcm.samples);
+
+  if (sstv_encode_fskid("ABCDEFGHIJK", &invalid, &error) || error == NULL) {
+    fprintf(stderr, "FSKID callsigns longer than 10 characters must be rejected\n");
+    if (error != NULL) g_error_free(error);
+    free(invalid.samples);
+    return 0;
+  }
+  g_error_free(error);
+  return 1;
+}
+
 int main(void) {
   GdkPixbuf *image;
   SstvPcm pcm = { NULL, 0 };
@@ -138,5 +201,7 @@ int main(void) {
   }
   g_object_unref(image);
   puts("Martin M1/M2 encoding OK: VIS, timing and RGB scan tones verified");
+  if (!check_fskid()) return EXIT_FAILURE;
+  puts("FSKID encoding OK: sync, LSB-first tones, callsign and length verified");
   return EXIT_SUCCESS;
 }

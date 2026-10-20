@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define SSTV_SAMPLE_RATE 44100
 #define ROBOT36_WIDTH 320
@@ -57,6 +58,70 @@ static void set_error(GError **error, int code, const char *message) {
   if (error != NULL)
     g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-encoder"),
                         code, message);
+}
+
+gboolean sstv_encode_fskid(const gchar *callsign, SstvPcm *pcm, GError **error) {
+  gchar *uppercase;
+  size_t call_length, byte_count, bit_count, sample_count;
+  size_t byte_index, bit_index;
+  double phase = 0.0;
+
+  if (pcm == NULL) {
+    set_error(error, 6, "Missing FSKID output buffer");
+    return FALSE;
+  }
+  pcm->samples = NULL;
+  pcm->length = 0;
+  if (callsign == NULL) {
+    set_error(error, 7, "Missing FSKID callsign");
+    return FALSE;
+  }
+
+  uppercase = g_ascii_strup(callsign, -1);
+  call_length = strlen(uppercase);
+  if (call_length == 0 || call_length > 10) {
+    g_free(uppercase);
+    set_error(error, 8, "FSKID callsign must contain 1 to 10 characters");
+    return FALSE;
+  }
+  for (byte_index = 0; byte_index < call_length; ++byte_index) {
+    guchar ch = (guchar)uppercase[byte_index];
+    if (!g_ascii_isalnum(ch) && ch != '/' && ch != '-') {
+      g_free(uppercase);
+      set_error(error, 9, "FSKID callsign may contain only letters, digits, '/' or '-'");
+      return FALSE;
+    }
+  }
+
+  byte_count = call_length + 3;
+  bit_count = byte_count * 6;
+  sample_count = sample_at_half_us((long long)bit_count * 44000LL);
+  pcm->samples = malloc(sample_count * sizeof(*pcm->samples));
+  if (pcm->samples == NULL) {
+    g_free(uppercase);
+    set_error(error, 10, "Unable to allocate FSKID audio buffer");
+    return FALSE;
+  }
+  pcm->length = sample_count;
+
+  for (byte_index = 0; byte_index < byte_count; ++byte_index) {
+    guchar value;
+    if (byte_index == 0) value = 0x20;
+    else if (byte_index == 1) value = 0x2a;
+    else if (byte_index == byte_count - 1) value = 0x01;
+    else value = (guchar)uppercase[byte_index - 2] - 0x20;
+
+    for (bit_index = 0; bit_index < 6; ++bit_index) {
+      size_t symbol = byte_index * 6 + bit_index;
+      size_t start = sample_at_half_us((long long)symbol * 44000LL);
+      size_t end = sample_at_half_us((long long)(symbol + 1) * 44000LL);
+      double frequency = ((value >> bit_index) & 1U) ? 1900.0 : 2100.0;
+      write_tone(pcm->samples, start, end, frequency, &phase);
+    }
+  }
+
+  g_free(uppercase);
+  return TRUE;
 }
 
 gboolean sstv_encode_robot36(GdkPixbuf *image, SstvPcm *pcm, GError **error) {
