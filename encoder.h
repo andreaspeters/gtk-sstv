@@ -1,0 +1,27 @@
+#ifndef SLOWRX_ENCODER_H
+#define SLOWRX_ENCODER_H
+
+#include <stddef.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
+
+typedef struct {
+  gint16 *samples;
+  size_t length;
+} SstvPcm;
+
+typedef enum {
+  SSTV_MODE_ROBOT36,
+  SSTV_MODE_MARTIN_M1,
+  SSTV_MODE_MARTIN_M2
+} SstvMode;
+
+/* Encode any RGB GdkPixbuf as Robot 36 at 44.1 kHz mono S16.
+ * The returned samples belong to the caller and must be freed with free().
+ * Returns FALSE and sets error on invalid input or allocation failure.
+ */
+gboolean sstv_encode_robot36(GdkPixbuf *image, SstvPcm *pcm, GError **error);
+gboolean sstv_encode_mode(GdkPixbuf *image, SstvMode mode,
+                          SstvPcm *pcm, GError **error);
+const gchar *sstv_mode_name(SstvMode mode);
+
+#endif

@@ -19,6 +19,7 @@
 #include <fftw3.h>
 
 #include "common.h"
+#include "txdialog.h"
 
 // The thread that listens to VIS headers and calls decoders etc
 void *Listen() {
@@ -72,6 +73,8 @@ void *Listen() {
     
     CurrentPic.Rate = 44100;
     CurrentPic.Mode = Mode;
+    CurrentPic.ReceivedValid = FALSE;
+    CurrentPic.RemoteCall[0] = '\0';
 
     printf("  ==== %s ====\n", ModeSpec[CurrentPic.Mode].Name);
 
@@ -113,6 +116,7 @@ void *Listen() {
     printf("  getvideo @ %.1f Hz, Skip %d, HedrShift %+d Hz\n", 44100.0, 0, CurrentPic.HedrShift);
 
     Finished = GetVideo(CurrentPic.Mode, 44100, 0, FALSE);
+    CurrentPic.ReceivedValid = Finished;
 
     gdk_threads_enter        ();
     gtk_widget_set_sensitive (gui.button_abort, FALSE);
@@ -125,6 +129,7 @@ void *Listen() {
       gtk_statusbar_push (GTK_STATUSBAR(gui.statusbar), 0, "Receiving FSK ID..." );
       gdk_threads_leave  ();
       GetFSK(id);
+      g_strlcpy(CurrentPic.RemoteCall, id, sizeof(CurrentPic.RemoteCall));
       printf("  FSKID \"%s\"\n",id);
       gdk_threads_enter  ();
       gtk_label_set_text (GTK_LABEL(gui.label_fskid), id);
@@ -158,8 +163,12 @@ void *Listen() {
     gdk_threads_enter                  ();
     gtk_list_store_prepend             (savedstore, &iter);
     gtk_list_store_set                 (savedstore, &iter, 0, CurrentPic.thumbbuf, 1, id, -1);
+    if (CurrentPic.ReceivedValid && gui.tx_panel != NULL && pixbuf_rx != NULL) {
+      sstv_tx_panel_set_received(gui.tx_panel, pixbuf_rx, CurrentPic.RemoteCall,
+                                 CurrentPic.SnrDb, CurrentPic.SnrValid);
+    }
     gdk_threads_leave                  ();
-    
+
     // Save PNG
     if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON(gui.tog_save))) {
     

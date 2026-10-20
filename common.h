@@ -38,6 +38,7 @@ struct _GuiObjs {
   GtkWidget *button_abort;
   GtkWidget *button_browse;
   GtkWidget *button_clear;
+
   GtkWidget *button_start;
   GtkWidget *combo_card;
   GtkWidget *combo_mode;
@@ -66,6 +67,7 @@ struct _GuiObjs {
   GtkWidget *tog_slant;
   GtkWidget *window_about;
   GtkWidget *window_main;
+  GtkWidget *tx_panel;
 };
 extern GuiObjs   gui;
 
@@ -84,9 +86,13 @@ struct _PicMeta {
   gshort HedrShift;
   guchar Mode;
   double Rate;
+  double SnrDb;
+  gboolean SnrValid;
+  gboolean ReceivedValid;
   int    Skip;
   GdkPixbuf *thumbbuf;
   char   timestr[40];
+  char   RemoteCall[20];
 };
 extern PicMeta CurrentPic;
 
@@ -147,5 +153,4 @@ void     evt_deletewindow  ();
 void     evt_GetAdaptive   ();
 void     evt_ManualStart   ();
 void     evt_show_about    ();
-
 #endif

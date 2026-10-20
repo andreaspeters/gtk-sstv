@@ -6,10 +6,12 @@
 #include <fftw3.h>
 
 #include "common.h"
+#include "txdialog.h"
 
 void createGUI() {
 
   GtkBuilder *builder;
+  GtkWidget  *notebook, *tx_page;
 
   builder = gtk_builder_new();
   gtk_builder_add_from_file(builder, "slowrx.ui",      NULL);
@@ -46,6 +48,15 @@ void createGUI() {
   gui.tog_slant       = GTK_WIDGET(gtk_builder_get_object(builder,"tog_slant"));
   gui.window_about    = GTK_WIDGET(gtk_builder_get_object(builder,"window_about"));
   gui.window_main     = GTK_WIDGET(gtk_builder_get_object(builder,"window_main"));
+
+  notebook = GTK_WIDGET(gtk_builder_get_object(builder,"notebook1"));
+  tx_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  gtk_container_set_border_width(GTK_CONTAINER(tx_page), 12);
+  gui.tx_panel = sstv_tx_panel_new(GTK_WINDOW(gui.window_main), config);
+  gtk_box_pack_start(GTK_BOX(tx_page), gui.tx_panel, TRUE, TRUE, 0);
+  // Embeds the SSTV transmit control panel directly in the TX tab
+  gtk_notebook_insert_page(GTK_NOTEBOOK(notebook), tx_page,
+                           gtk_label_new("TX"), 1);
 
   g_signal_connect        (gui.button_abort,  "clicked",      G_CALLBACK(evt_AbortRx),       NULL);
   g_signal_connect        (gui.button_browse, "clicked",      G_CALLBACK(evt_chooseDir),     NULL);

@@ -34,6 +34,8 @@ gboolean GetVideo(guchar Mode, double Rate, int Skip, gboolean Redraw) {
   double     Power[1024] = {0};
   double     Pvideo_plus_noise=0, Pnoise_only=0, Pnoise=0, Psignal=0;
   double     SNR = 0;
+  double     SNRsum = 0;
+  int        SNRcount = 0;
   double     ChanStart[4] = {0}, ChanLen[4] = {0};
   guchar     Image[800][616][3] = {{{0}}};
   guchar     Channel = 0, WinIdx = 0;
@@ -255,6 +257,10 @@ gboolean GetVideo(guchar Mode, double Rate, int Skip, gboolean Redraw) {
   SyncTargetBin = GetBin(1200 + CurrentPic.HedrShift, FFTLen);
   Abort = FALSE;
   SyncSampleNum = 0;
+  if (!Redraw) {
+    CurrentPic.SnrDb = 0;
+    CurrentPic.SnrValid = FALSE;
+  }
 
   // Loop through signal
   for (SampleNum = 0; SampleNum < Length; SampleNum++) {
@@ -339,6 +345,11 @@ gboolean GetVideo(guchar Mode, double Rate, int Skip, gboolean Redraw) {
 
         // Lower bound to -20 dB
         SNR = ((Psignal / Pnoise < .01) ? -20 : 10 * log10(Psignal / Pnoise));
+        if (!isfinite(SNR)) SNR = -20;
+        SNRsum += SNR;
+        SNRcount++;
+        CurrentPic.SnrDb = SNRsum / SNRcount;
+        CurrentPic.SnrValid = TRUE;
 
         NextSNRtime += 256;
       }
