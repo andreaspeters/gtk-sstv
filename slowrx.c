@@ -92,6 +92,7 @@ void *Listen() {
   gboolean    Finished;
   char        id[20];
   GtkTreeIter iter;
+  gsize       SyncCount;
 
   while (TRUE) {
 
@@ -157,7 +158,8 @@ void *Listen() {
     }
 
     // Allocate space for sync signal
-    HasSync = calloc((int)(ModeSpec[CurrentPic.Mode].LineTime * ModeSpec[CurrentPic.Mode].NumLines / (13.0/44100) +1), sizeof(gboolean));
+    SyncCount = (gsize)(ModeSpec[CurrentPic.Mode].LineTime * ModeSpec[CurrentPic.Mode].NumLines / (13.0/44100) + 1);
+    HasSync = calloc(SyncCount, sizeof(gboolean));
     if (HasSync == NULL) {
       perror("Listen: Unable to allocate memory for sync signal");
       exit(EXIT_FAILURE);
@@ -208,7 +210,8 @@ void *Listen() {
                    NULL, 0, 0, FALSE);
       gui_dispatch(GUI_ACTION_SENSITIVE, gui.grid_vu, NULL, NULL, 0, 0, FALSE);
       printf("  FindSync @ %.1f Hz\n",CurrentPic.Rate);
-      CurrentPic.Rate = FindSync(CurrentPic.Mode, CurrentPic.Rate, &CurrentPic.Skip);
+      CurrentPic.Rate = FindSync(CurrentPic.Mode, CurrentPic.Rate,
+                                 &CurrentPic.Skip, SyncCount);
    
       // Final image  
       printf("  getvideo @ %.1f Hz, Skip %d, HedrShift %+d Hz\n", CurrentPic.Rate, CurrentPic.Skip, CurrentPic.HedrShift);

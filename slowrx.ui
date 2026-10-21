@@ -92,7 +92,7 @@
       <item translatable="yes">73</item>
       <item translatable="yes">FB SIGS</item>
       <item translatable="yes">CQ CQ CQ SSTV</item>
-      <item translatable="yes"></item>
+      <item translatable="yes"/>
     </items>
   </object>
   <object class="GtkAdjustment" id="tx_station_font_size_adjustment">
@@ -146,23 +146,23 @@
                     <property name="visible">True</property>
                     <child>
                       <object class="GtkGrid" id="MainGrid">
-                        <property name="hexpand">True</property>
-                        <property name="vexpand">True</property>
                         <property name="can-focus">False</property>
                         <property name="column-spacing">10</property>
+                        <property name="hexpand">True</property>
                         <property name="row-spacing">10</property>
+                        <property name="vexpand">True</property>
                         <property name="visible">True</property>
                         <child>
                           <object class="GtkFrame" id="ImgFrame">
-                            <property name="hexpand">True</property>
-                            <property name="vexpand">True</property>
                             <property name="can-focus">False</property>
+                            <property name="hexpand">True</property>
                             <property name="label-xalign">0</property>
+                            <property name="vexpand">True</property>
                             <property name="visible">True</property>
                             <child>
                               <object class="GtkBox" id="alignment3">
                                 <property name="can-focus">False</property>
-                                <property name="halign">start</property>
+                                <property name="hexpand">True</property>
                                 <property name="margin-bottom">10</property>
                                 <property name="margin-end">10</property>
                                 <property name="margin-start">10</property>
@@ -175,14 +175,14 @@
                                     <property name="visible">True</property>
                                     <child>
                                       <object class="GtkBox" id="eventbox_img">
-                                        <property name="hexpand">True</property>
-                                        <property name="vexpand">True</property>
                                         <property name="can-focus">False</property>
+                                        <property name="hexpand">True</property>
                                         <property name="margin-bottom">7</property>
                                         <property name="margin-end">7</property>
                                         <property name="margin-start">7</property>
                                         <property name="margin-top">7</property>
                                         <property name="orientation">horizontal</property>
+                                        <property name="vexpand">True</property>
                                         <property name="visible">True</property>
                                         <child>
                                           <object class="GtkPicture" id="image_rx">
@@ -215,166 +215,250 @@
                             </layout>
                           </object>
                         </child>
-                      <child>
-                        <object class="GtkBox" id="rx_metadata_column">
-                          <property name="orientation">vertical</property>
-                          <property name="spacing">10</property>
-                          <property name="visible">True</property>
-                          <child>
-                            <object class="GtkBox" id="box1">
-                              <property name="can-focus">False</property>
-                              <property name="orientation">vertical</property>
-                              <property name="spacing">8</property>
-                              <property name="homogeneous">False</property>
-                              <property name="hexpand">True</property>
-                              <property name="visible">True</property>
-                              <child>
-                                <object class="GtkFrame" id="IDFrame">
-                                  <property name="can-focus">False</property>
-                                  <property name="label-xalign">0</property>
-                                  <property name="margin-bottom">7</property>
-                                  <property name="margin-end">7</property>
-                                  <property name="margin-start">7</property>
-                                  <property name="margin-top">7</property>
-                                  <property name="visible">True</property>
-                                  <child>
-                                    <object class="GtkBox" id="alignment7">
-                                      <property name="can-focus">False</property>
-                                      <property name="margin-bottom">10</property>
-                                      <property name="margin-end">10</property>
-                                      <property name="margin-start">10</property>
-                                      <property name="margin-top">10</property>
-                                      <property name="visible">True</property>
-                                      <child>
-                                        <object class="GtkLabel" id="label_fskid">
-                                          <property name="can-focus">False</property>
-                                          <property name="halign">start</property>
-                                          <property name="visible">True</property>
-                                          <property name="width-chars">8</property>
-                                          <property name="width-request">80</property>
-                                          <attributes>
-                                            <attribute name="font-desc" value="Monospace Bold 16"/>
-                                          </attributes>
-                                        </object>
-                                      </child>
-                                    </object>
-                                  </child>
-                                  <child type="label">
-                                    <object class="GtkLabel" id="label4">
-                                      <property name="can-focus">False</property>
-                                      <property name="label" translatable="yes">Callsign</property>
-                                      <property name="use-markup">True</property>
-                                      <property name="visible">True</property>
-                                    </object>
-                                  </child>
-                                </object>
-                              </child>
-                              <child>
-                                <object class="GtkFrame" id="UTCFrame">
-                                  <property name="can-focus">False</property>
-                                  <property name="label-xalign">0</property>
-                                  <property name="margin-bottom">7</property>
-                                  <property name="margin-end">7</property>
-                                  <property name="margin-start">7</property>
-                                  <property name="margin-top">7</property>
-                                  <property name="visible">True</property>
-                                  <child>
-                                    <object class="GtkBox" id="alignment8">
-                                      <property name="can-focus">False</property>
-                                      <property name="margin-start">12</property>
-                                      <property name="visible">True</property>
-                                      <child>
-                                        <object class="GtkLabel" id="label_utc">
-                                          <property name="can-focus">False</property>
-                                          <property name="halign">start</property>
-                                          <property name="label" translatable="yes"> </property>
-                                          <property name="visible">True</property>
-                                          <property name="width-chars">5</property>
-                                          <attributes>
-                                            <attribute name="font-desc" value="Monospace 11"/>
-                                          </attributes>
-                                        </object>
-                                      </child>
-                                    </object>
-                                  </child>
-                                  <child type="label">
-                                    <object class="GtkLabel" id="label5">
-                                      <property name="can-focus">False</property>
-                                      <property name="label" translatable="yes">Received at</property>
-                                      <property name="use-markup">True</property>
-                                      <property name="visible">True</property>
-                                    </object>
-                                  </child>
-                                </object>
-                              </child>
-                              <child>
-                                <object class="GtkFrame" id="LastModeFrame">
-                                  <property name="can-focus">False</property>
-                                  <property name="label-xalign">0</property>
-                                  <property name="margin-bottom">7</property>
-                                  <property name="margin-end">7</property>
-                                  <property name="margin-start">7</property>
-                                  <property name="margin-top">7</property>
-                                  <property name="visible">True</property>
-                                  <child>
-                                    <object class="GtkBox" id="alignment11">
-                                      <property name="can-focus">False</property>
-                                      <property name="margin-start">12</property>
-                                      <property name="visible">True</property>
-                                      <child>
-                                        <object class="GtkLabel" id="label_lastmode">
-                                          <property name="can-focus">False</property>
-                                          <property name="halign">start</property>
-                                          <property name="label" translatable="yes"> </property>
-                                          <property name="visible">True</property>
-                                          <attributes>
-                                            <attribute name="font-desc" value="Monospace 11"/>
-                                          </attributes>
-                                        </object>
-                                      </child>
-                                    </object>
-                                  </child>
-                                  <child type="label">
-                                    <object class="GtkLabel" id="label13">
-                                      <property name="can-focus">False</property>
-                                      <property name="label" translatable="yes">Mode</property>
-                                      <property name="use-markup">True</property>
-                                      <property name="visible">True</property>
-                                    </object>
-                                  </child>
-                                </object>
-                              </child>
-                            </object>
-                          </child>
-                          <child>
-                            <object class="GtkBox">
-                              <property name="spacing">8</property>
-                              <property name="margin-top">10</property>
-                              <child>
-                                <object class="GtkBox">
-                                  <child>
-                                    <object class="GtkButton" id="button_answer">
-                                      <property name="label">Answer</property>
-                                      <property name="margin-start">7</property>
-                                    </object>
-                                  </child>
-                                </object>
-                              </child>
-                              <child>
-                                <object class="GtkButton" id="button_adif">
-                                  <property name="label">Logging</property>
-                                  <property name="margin-start">10</property>
-                                </object>
-                              </child>
-                            </object>
-                          </child>
-                          <layout>
-                            <property name="column">2</property>
-                            <property name="row">1</property>
-                            <property name="row-span">2</property>
-                          </layout>
-                        </object>
-                      </child>
+                        <child>
+                          <object class="GtkBox" id="rx_metadata_column">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">10</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkBox" id="box1">
+                                <property name="can-focus">False</property>
+                                <property name="hexpand">True</property>
+                                <property name="homogeneous">False</property>
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">8</property>
+                                <property name="visible">True</property>
+                                <child>
+                                  <object class="GtkFrame" id="IDFrame">
+                                    <property name="can-focus">False</property>
+                                    <property name="label-xalign">0</property>
+                                    <property name="margin-bottom">7</property>
+                                    <property name="margin-end">7</property>
+                                    <property name="margin-start">7</property>
+                                    <property name="margin-top">7</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkBox" id="alignment7">
+                                        <property name="can-focus">False</property>
+                                        <property name="margin-bottom">10</property>
+                                        <property name="margin-end">10</property>
+                                        <property name="margin-start">10</property>
+                                        <property name="margin-top">10</property>
+                                        <property name="visible">True</property>
+                                        <child>
+                                          <object class="GtkLabel" id="label_fskid">
+                                            <property name="can-focus">False</property>
+                                            <property name="halign">start</property>
+                                            <property name="visible">True</property>
+                                            <property name="width-chars">8</property>
+                                            <property name="width-request">80</property>
+                                            <attributes>
+                                              <attribute name="font-desc" value="Monospace Bold 16"/>
+                                            </attributes>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child type="label">
+                                      <object class="GtkLabel" id="label4">
+                                        <property name="can-focus">False</property>
+                                        <property name="label" translatable="yes">Callsign</property>
+                                        <property name="use-markup">True</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkFrame" id="UTCFrame">
+                                    <property name="can-focus">False</property>
+                                    <property name="label-xalign">0</property>
+                                    <property name="margin-bottom">7</property>
+                                    <property name="margin-end">7</property>
+                                    <property name="margin-start">7</property>
+                                    <property name="margin-top">7</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkBox" id="alignment8">
+                                        <property name="can-focus">False</property>
+                                        <property name="margin-start">12</property>
+                                        <property name="visible">True</property>
+                                        <child>
+                                          <object class="GtkLabel" id="label_utc">
+                                            <property name="can-focus">False</property>
+                                            <property name="halign">start</property>
+                                            <property name="label" translatable="yes"> </property>
+                                            <property name="visible">True</property>
+                                            <property name="width-chars">5</property>
+                                            <attributes>
+                                              <attribute name="font-desc" value="Monospace 11"/>
+                                            </attributes>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child type="label">
+                                      <object class="GtkLabel" id="label5">
+                                        <property name="can-focus">False</property>
+                                        <property name="label" translatable="yes">Received at</property>
+                                        <property name="use-markup">True</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkFrame" id="LastModeFrame">
+                                    <property name="can-focus">False</property>
+                                    <property name="label-xalign">0</property>
+                                    <property name="margin-bottom">7</property>
+                                    <property name="margin-end">7</property>
+                                    <property name="margin-start">7</property>
+                                    <property name="margin-top">7</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkBox" id="alignment11">
+                                        <property name="can-focus">False</property>
+                                        <property name="margin-start">12</property>
+                                        <property name="visible">True</property>
+                                        <child>
+                                          <object class="GtkLabel" id="label_lastmode">
+                                            <property name="can-focus">False</property>
+                                            <property name="halign">start</property>
+                                            <property name="label" translatable="yes"> </property>
+                                            <property name="visible">True</property>
+                                            <attributes>
+                                              <attribute name="font-desc" value="Monospace 11"/>
+                                            </attributes>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child type="label">
+                                      <object class="GtkLabel" id="label13">
+                                        <property name="can-focus">False</property>
+                                        <property name="label" translatable="yes">Mode</property>
+                                        <property name="use-markup">True</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox">
+                                <property name="margin-top">10</property>
+                                <property name="spacing">8</property>
+                                <child>
+                                  <object class="GtkBox">
+                                    <child>
+                                      <object class="GtkButton" id="button_answer">
+                                        <property name="label">Answer</property>
+                                        <property name="margin-start">7</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkButton" id="button_adif">
+                                    <property name="label">Logging</property>
+                                    <property name="margin-start">10</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkFrame" id="frame_levels">
+                                <property name="can-focus">False</property>
+                                <property name="label-xalign">0</property>
+                                <property name="vexpand">True</property>
+                                <property name="visible">True</property>
+                                <child>
+                                  <object class="GtkBox" id="alignment6">
+                                    <property name="can-focus">False</property>
+                                    <property name="margin-bottom">10</property>
+                                    <property name="margin-end">10</property>
+                                    <property name="margin-start">10</property>
+                                    <property name="margin-top">10</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkGrid" id="grid_vu">
+                                        <property name="can-focus">False</property>
+                                        <property name="column-spacing">4</property>
+                                        <property name="hexpand">True</property>
+                                        <property name="row-spacing">4</property>
+                                        <property name="vexpand">True</property>
+                                        <property name="visible">True</property>
+                                        <child>
+                                          <object class="GtkLabel" id="label10">
+                                            <property name="can-focus">False</property>
+                                            <property name="label" translatable="yes">FFT</property>
+                                            <property name="visible">True</property>
+                                            <layout>
+                                              <property name="column">0</property>
+                                              <property name="row">0</property>
+                                            </layout>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkLabel" id="label11">
+                                            <property name="can-focus">False</property>
+                                            <property name="label" translatable="yes">SNR</property>
+                                            <property name="visible">True</property>
+                                            <layout>
+                                              <property name="column">0</property>
+                                              <property name="row">1</property>
+                                            </layout>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkPicture" id="image_pwr">
+                                            <property name="can-focus">False</property>
+                                            <property name="content-fit">fill</property>
+                                            <property name="hexpand">True</property>
+                                            <property name="vexpand">True</property>
+                                            <property name="visible">True</property>
+                                            <layout>
+                                              <property name="column">1</property>
+                                              <property name="row">0</property>
+                                            </layout>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkPicture" id="image_snr">
+                                            <property name="can-focus">False</property>
+                                            <property name="content-fit">fill</property>
+                                            <property name="hexpand">True</property>
+                                            <property name="vexpand">True</property>
+                                            <property name="visible">True</property>
+                                            <layout>
+                                              <property name="column">1</property>
+                                              <property name="row">1</property>
+                                            </layout>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child type="label">
+                                  <object class="GtkLabel" id="label12">
+                                    <property name="can-focus">False</property>
+                                    <property name="label" translatable="yes">Signal level</property>
+                                    <property name="use-markup">True</property>
+                                    <property name="visible">True</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <layout>
+                              <property name="column">2</property>
+                              <property name="row">1</property>
+                              <property name="row-span">2</property>
+                            </layout>
+                          </object>
+                        </child>
                         <child>
                           <object class="GtkBox" id="ButtonVBox">
                             <property name="can-focus">False</property>
@@ -564,6 +648,7 @@
                                 <child>
                                   <object class="GtkBox" id="alignment13">
                                     <property name="can-focus">False</property>
+                                    <property name="hexpand">True</property>
                                     <property name="margin-bottom">10</property>
                                     <property name="margin-end">10</property>
                                     <property name="margin-start">10</property>
@@ -572,6 +657,7 @@
                                     <child>
                                       <object class="GtkToggleButton" id="tog_setedge">
                                         <property name="can-focus">True</property>
+                                        <property name="hexpand">True</property>
                                         <property name="label" translatable="yes">Set left edge</property>
                                         <property name="receives-default">True</property>
                                         <property name="visible">True</property>
@@ -592,6 +678,7 @@
                             <child>
                               <object class="GtkFrame" id="frame_manual">
                                 <property name="can-focus">False</property>
+                                <property name="hexpand">True</property>
                                 <property name="label-xalign">0</property>
                                 <property name="valign">start</property>
                                 <property name="vexpand">True</property>
@@ -599,6 +686,7 @@
                                 <child>
                                   <object class="GtkBox" id="alignment5">
                                     <property name="can-focus">False</property>
+                                    <property name="hexpand">True</property>
                                     <property name="margin-bottom">10</property>
                                     <property name="margin-end">10</property>
                                     <property name="margin-start">10</property>
@@ -607,6 +695,7 @@
                                     <child>
                                       <object class="GtkBox" id="ManualVBox">
                                         <property name="can-focus">False</property>
+                                        <property name="hexpand">True</property>
                                         <property name="orientation">vertical</property>
                                         <property name="spacing">6</property>
                                         <property name="visible">True</property>
@@ -666,86 +755,6 @@
                                   <object class="GtkLabel" id="label9">
                                     <property name="can-focus">False</property>
                                     <property name="label" translatable="yes">Manual start</property>
-                                    <property name="use-markup">True</property>
-                                    <property name="visible">True</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFrame" id="frame_levels">
-                                <property name="can-focus">False</property>
-                                <property name="label-xalign">0</property>
-                                <property name="vexpand">True</property>
-                                <property name="visible">True</property>
-                                <child>
-                                  <object class="GtkBox" id="alignment6">
-                                    <property name="can-focus">False</property>
-                                    <property name="margin-bottom">10</property>
-                                    <property name="margin-end">10</property>
-                                    <property name="margin-start">10</property>
-                                    <property name="margin-top">10</property>
-                                    <property name="visible">True</property>
-                                    <child>
-                                      <object class="GtkGrid" id="grid_vu">
-                                        <property name="can-focus">False</property>
-                                        <property name="column-spacing">4</property>
-                                        <property name="row-spacing">4</property>
-                                        <property name="visible">True</property>
-                                        <child>
-                                          <object class="GtkLabel" id="label10">
-                                            <property name="can-focus">False</property>
-                                            <property name="label" translatable="yes">FFT</property>
-                                            <property name="visible">True</property>
-                                            <layout>
-                                              <property name="column">0</property>
-                                              <property name="row">0</property>
-                                            </layout>
-                                          </object>
-                                        </child>
-                                        <child>
-                                          <object class="GtkLabel" id="label11">
-                                            <property name="can-focus">False</property>
-                                            <property name="label" translatable="yes">SNR</property>
-                                            <property name="visible">True</property>
-                                            <layout>
-                                              <property name="column">0</property>
-                                              <property name="row">1</property>
-                                            </layout>
-                                          </object>
-                                        </child>
-                                        <child>
-                                          <object class="GtkImage" id="image_pwr">
-                                            <property name="can-focus">False</property>
-                                            <property name="height-request">20</property>
-                                            <property name="visible">True</property>
-                                            <property name="width-request">100</property>
-                                            <layout>
-                                              <property name="column">1</property>
-                                              <property name="row">0</property>
-                                            </layout>
-                                          </object>
-                                        </child>
-                                        <child>
-                                          <object class="GtkImage" id="image_snr">
-                                            <property name="can-focus">False</property>
-                                            <property name="height-request">20</property>
-                                            <property name="visible">True</property>
-                                            <property name="width-request">100</property>
-                                            <layout>
-                                              <property name="column">1</property>
-                                              <property name="row">1</property>
-                                            </layout>
-                                          </object>
-                                        </child>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </child>
-                                <child type="label">
-                                  <object class="GtkLabel" id="label12">
-                                    <property name="can-focus">False</property>
-                                    <property name="label" translatable="yes">Signal level</property>
                                     <property name="use-markup">True</property>
                                     <property name="visible">True</property>
                                   </object>
@@ -1030,8 +1039,8 @@
                                         <property name="can-focus">True</property>
                                         <property name="editable">True</property>
                                         <property name="hexpand">True</property>
-                                        <property name="sensitive">True</property>
                                         <property name="placeholder-text" translatable="yes">Your callsign</property>
+                                        <property name="sensitive">True</property>
                                         <property name="visible">True</property>
                                       </object>
                                     </child>
@@ -1041,8 +1050,8 @@
                                         <property name="editable">True</property>
                                         <property name="max-length">12</property>
                                         <property name="placeholder-text" translatable="yes">Locator (e.g. JO62QM)</property>
-                                        <property name="width-chars">12</property>
                                         <property name="visible">True</property>
+                                        <property name="width-chars">12</property>
                                       </object>
                                     </child>
                                     <layout>
@@ -1088,8 +1097,8 @@
                                   <object class="GtkEntry" id="tx_their_call">
                                     <property name="can-focus">True</property>
                                     <property name="editable">True</property>
-                                    <property name="sensitive">True</property>
                                     <property name="placeholder-text" translatable="yes">Other station (decoded FSK ID, if available)</property>
+                                    <property name="sensitive">True</property>
                                     <property name="visible">True</property>
                                     <layout>
                                       <property name="column">1</property>
@@ -1112,8 +1121,8 @@
                                   <object class="GtkEntry" id="tx_report">
                                     <property name="can-focus">True</property>
                                     <property name="editable">True</property>
-                                    <property name="sensitive">True</property>
                                     <property name="placeholder-text" translatable="yes">Enter received report</property>
+                                    <property name="sensitive">True</property>
                                     <property name="visible">True</property>
                                     <layout>
                                       <property name="column">1</property>
@@ -1182,11 +1191,11 @@
                                         <property name="can-focus">True</property>
                                         <property name="cursor-visible">True</property>
                                         <property name="editable">True</property>
-                                        <property name="hexpand">True</property>
                                         <property name="height-request">79</property>
+                                        <property name="hexpand">True</property>
                                         <property name="sensitive">True</property>
-                                        <property name="visible">True</property>
                                         <property name="vexpand">True</property>
+                                        <property name="visible">True</property>
                                         <property name="width-request">260</property>
                                         <property name="wrap-mode">word-char</property>
                                       </object>
@@ -1280,17 +1289,17 @@
                                   <object class="GtkFrame" id="tx_preview_frame">
                                     <property name="hexpand">True</property>
                                     <property name="label" translatable="yes">Composed image preview</property>
-                                    <property name="visible">True</property>
                                     <property name="vexpand">True</property>
+                                    <property name="visible">True</property>
                                     <child>
                                       <object class="GtkPicture" id="tx_preview">
                                         <property name="alternative-text" translatable="yes">Composed SSTV image preview</property>
                                         <property name="can-shrink">True</property>
                                         <property name="content-fit">contain</property>
-                                        <property name="hexpand">True</property>
                                         <property name="height-request">390</property>
-                                        <property name="visible">True</property>
+                                        <property name="hexpand">True</property>
                                         <property name="vexpand">True</property>
+                                        <property name="visible">True</property>
                                         <property name="width-request">520</property>
                                       </object>
                                     </child>
@@ -1345,6 +1354,7 @@
                 <child>
                   <object class="GtkBox" id="alignment12">
                     <property name="can-focus">False</property>
+                    <property name="hexpand">True</property>
                     <property name="margin-bottom">10</property>
                     <property name="margin-end">10</property>
                     <property name="margin-start">10</property>
@@ -1353,6 +1363,7 @@
                     <child>
                       <object class="GtkFrame" id="SavedFrame">
                         <property name="can-focus">False</property>
+                        <property name="hexpand">True</property>
                         <property name="label-xalign">0</property>
                         <property name="vexpand">True</property>
                         <property name="visible">True</property>

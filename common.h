@@ -170,7 +170,7 @@ double   power     (fftw_complex coeff);
 guchar   clip          (double a);
 void     createGUI     (GtkApplication *application);
 double   deg2rad       (double Deg);
-double   FindSync      (guchar Mode, double Rate, int *Skip);
+double   FindSync      (guchar Mode, double Rate, int *Skip, gsize SyncCount);
 void     GetFSK        (char *dest);
 gboolean GetVideo      (guchar Mode, double Rate, int Skip, gboolean Redraw);
 guchar   GetVIS        ();

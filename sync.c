@@ -6,6 +6,7 @@
 #include <alsa/asoundlib.h>
 
 #include "common.h"
+#include "sync_bounds.h"
 
 /* Find the slant angle of the sync singnal and adjust sample rate to cancel it out
  *   Length:  number of PCM samples to process
@@ -15,11 +16,12 @@
  *   returns  adjusted sample rate
  *
  */
-double FindSync (guchar Mode, double Rate, int *Skip) {
+double FindSync (guchar Mode, double Rate, int *Skip, gsize SyncCount) {
 
   int      LineWidth = ModeSpec[Mode].LineTime / ModeSpec[Mode].SyncTime * 4;
   int      x,y;
   int      q, d, qMost, dMost;
+  double   SyncSample;
   gushort  xAcc[700] = {0};
   gushort  lines[600][(MAXSLANT-MINSLANT)*2];
   gushort  cy, cx, Retries = 0;
@@ -37,7 +39,8 @@ double FindSync (guchar Mode, double Rate, int *Skip) {
     for (y=0; y<ModeSpec[Mode].NumLines; y++) {
       for (x=0; x<LineWidth; x++) {
         t = (y + 1.0*x/LineWidth) * ModeSpec[Mode].LineTime;
-        SyncImg[x][y] = HasSync[ (int)( t * Rate / 13.0) ];
+        SyncSample = t * Rate / 13.0;
+        SyncImg[x][y] = sync_sample_value(HasSync, SyncCount, SyncSample);
       }
     }
 
@@ -98,7 +101,8 @@ double FindSync (guchar Mode, double Rate, int *Skip) {
   for (y=0; y<ModeSpec[Mode].NumLines; y++) {
     for (x=0; x<700; x++) { 
       t = y * ModeSpec[Mode].LineTime + x/700.0 * ModeSpec[Mode].LineTime;
-      xAcc[x] += HasSync[ (int)(t / (13.0/44100) * Rate/44100) ];
+      SyncSample = t / (13.0/44100) * Rate/44100;
+      xAcc[x] += sync_sample_value(HasSync, SyncCount, SyncSample);
     }
   }
 

@@ -6,7 +6,7 @@ GTKLIBS   = `pkg-config --libs gtk4`
 
 OFLAGS = -O3
 
-OBJECTS = common.o modespec.o gui.o video.o vis.o sync.o pcm.o fsk.o slowrx.o encoder.o compose.o txaudio.o txdialog.o adifudp.o
+OBJECTS = common.o modespec.o gui.o video.o vis.o sync.o sync_bounds.o pcm.o fsk.o slowrx.o encoder.o compose.o txaudio.o txdialog.o adifudp.o
 
 all: slowrx
 
@@ -15,6 +15,9 @@ slowrx: $(OBJECTS)
 
 %.o: %.c common.h
 	$(CC) $(CFLAGS) $(GTKCFLAGS) $(OFLAGS) -c -o $@ $<
+
+sync_bounds.o: sync_bounds.c sync_bounds.h
+	$(CC) $(CFLAGS) $(OFLAGS) -c -o $@ $<
 
 encoder.o: encoder.c encoder.h
 	$(CC) $(CFLAGS) $(GTKCFLAGS) $(OFLAGS) -c -o $@ $<
@@ -61,6 +64,14 @@ test-txaudio:
 	tmp=$$(mktemp "$(HOME)/.hermes/cache/scratch/slowrx-txaudio-test.XXXXXX"); \
 	$(CC) -Wall -Wextra -std=gnu99 -pedantic $$(pkg-config --cflags alsa glib-2.0) -I. \
 	  -o "$$tmp" test_txaudio.c txaudio.c $$(pkg-config --libs alsa glib-2.0) && "$$tmp"; \
+	result=$$?; rm -f "$$tmp"; exit $$result
+
+.PHONY: test-sync-bounds
+test-sync-bounds:
+	@mkdir -p "$(HOME)/.hermes/cache/scratch"; \
+	tmp=$$(mktemp "$(HOME)/.hermes/cache/scratch/slowrx-sync-bounds-test.XXXXXX"); \
+	$(CC) -Wall -Wextra -std=gnu99 -pedantic -I. \
+	  -o "$$tmp" test_sync_bounds.c sync_bounds.c && "$$tmp"; \
 	result=$$?; rm -f "$$tmp"; exit $$result
 
 clean:
