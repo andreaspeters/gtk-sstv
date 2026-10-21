@@ -62,7 +62,7 @@ int main(void) {
   int rowstride, channels;
 
   large = sstv_compose_image(NULL, "N0CALL", "K1ABC", "SNR +12 dB",
-                             "2026-10-20 12:34 UTC", "TNX FER QSO", "", 14,
+                             "2026-10-20 12:34 UTC", "JO62QM", "TNX FER QSO", "", 14,
                              &red, &error);
   if (large != NULL || error == NULL) {
     if (large != NULL) g_object_unref(large);
@@ -74,7 +74,7 @@ int main(void) {
   source = new_source(0x406080ff);
   if (source == NULL) return fail("unable to allocate source image", NULL);
   large = sstv_compose_image(source, "N0CALL", "K1ABC", "SNR +12 dB",
-                             "2026-10-20 12:34 UTC", "TNX FER QSO",
+                             "2026-10-20 12:34 UTC", "JO62QM", "TNX FER QSO",
                              station_text, 18, &red, &error);
   if (large == NULL) {
     g_object_unref(source);
@@ -112,7 +112,7 @@ int main(void) {
   }
 
   small = sstv_compose_image(source, "N0CALL", "K1ABC", "SNR +12 dB",
-                             "2026-10-20 12:34 UTC", "TNX FER QSO",
+                             "2026-10-20 12:34 UTC", "JO62QM", "TNX FER QSO",
                              station_text, 8, &red, &error);
   if (small == NULL) {
     g_object_unref(source);
@@ -133,7 +133,7 @@ int main(void) {
   if (source == NULL) return fail("unable to allocate reply source image", NULL);
 
   reply = sstv_compose_reply_image(source, "N0CALL", "K1ABC", "SNR +12 dB",
-                                   "2026-10-20 12:34 UTC", "TNX FER QSO",
+                                   "2026-10-20 12:34 UTC", "JO62QM", "TNX FER QSO",
                                    station_text, 14, &red, FALSE, &error);
   if (reply == NULL) {
     g_object_unref(source);
@@ -158,7 +158,7 @@ int main(void) {
   }
 
   reply_right = sstv_compose_reply_image(source, "N0CALL", "K1ABC", "SNR +12 dB",
-                                         "2026-10-20 12:34 UTC", "TNX FER QSO",
+                                         "2026-10-20 12:34 UTC", "JO62QM", "TNX FER QSO",
                                          "", 14, &red, TRUE, &error);
   g_object_unref(source);
   if (reply_right == NULL) {

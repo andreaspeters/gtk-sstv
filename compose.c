@@ -6,7 +6,7 @@
 
 #define TX_WIDTH 320
 #define TX_HEIGHT 240
-#define FOOTER_HEIGHT 56
+#define FOOTER_HEIGHT 80
 #define THUMB_WIDTH 106
 #define THUMB_HEIGHT 80
 #define THUMB_MARGIN 8
@@ -149,23 +149,61 @@ static void draw_station_info(cairo_t *cr, const char *station_info,
   g_object_unref(layout);
 }
 
+static void draw_tx_footer(cairo_t *cr, const char *my_call,
+                           const char *their_call, const char *report,
+                           const char *utc_text, const char *locator,
+                           const char *message) {
+  PangoLayout *layout;
+  PangoFontDescription *font;
+  char *identity, *utc_locator;
+  const char *call_a = (my_call != NULL && *my_call != '\0') ? my_call : "NOCALL";
+  const char *call_b = (their_call != NULL && *their_call != '\0') ? their_call : "CQ";
+  const char *snr = (report != NULL && *report != '\0') ? report : "SNR unavailable";
+  const char *utc = (utc_text != NULL && *utc_text != '\0') ? utc_text : "UTC unknown";
+  const char *loc = (locator != NULL) ? locator : "";
+  const char *text = (message != NULL) ? message : "";
+
+  cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.86);
+  cairo_rectangle(cr, 0, TX_HEIGHT - FOOTER_HEIGHT, TX_WIDTH, FOOTER_HEIGHT);
+  cairo_fill(cr);
+
+  identity = g_strdup_printf("%s DE %s | %s", call_b, call_a, snr);
+  utc_locator = *loc != '\0' ? g_strdup_printf("%s | %s", utc, loc)
+                              : g_strdup(utc);
+  layout = pango_cairo_create_layout(cr);
+  font = pango_font_description_from_string("Sans Bold 14");
+  pango_layout_set_font_description(layout, font);
+  pango_layout_set_width(layout, (TX_WIDTH - 12) * PANGO_SCALE);
+  pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+  pango_layout_set_single_paragraph_mode(layout, TRUE);
+  cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+
+  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 4);
+  pango_layout_set_text(layout, identity, -1);
+  pango_cairo_show_layout(cr, layout);
+  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 29);
+  pango_layout_set_text(layout, utc_locator, -1);
+  pango_cairo_show_layout(cr, layout);
+  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 54);
+  pango_layout_set_text(layout, text, -1);
+  pango_cairo_show_layout(cr, layout);
+
+  pango_font_description_free(font);
+  g_object_unref(layout);
+  g_free(identity);
+  g_free(utc_locator);
+}
+
 GdkPixbuf *sstv_compose_image(GdkPixbuf *source, const char *my_call,
                               const char *their_call, const char *report,
-                              const char *utc_text, const char *message,
+                              const char *utc_text, const char *locator,
+                              const char *message,
                               const char *station_info, guint station_font_size,
                               const GdkRGBA *station_color,
                               GError **error) {
   GdkPixbuf *scaled, *result;
   cairo_surface_t *surface, *scaled_surface;
   cairo_t *cr;
-  PangoLayout *layout;
-  PangoFontDescription *font;
-  char *identity;
-  const char *call_a = (my_call != NULL && *my_call != '\0') ? my_call : "NOCALL";
-  const char *call_b = (their_call != NULL && *their_call != '\0') ? their_call : "CQ";
-  const char *snr = (report != NULL && *report != '\0') ? report : "SNR unavailable";
-  const char *utc = (utc_text != NULL && *utc_text != '\0') ? utc_text : "UTC unknown";
-  const char *text = (message != NULL) ? message : "";
 
   if (source == NULL || !GDK_IS_PIXBUF(source) ||
       gdk_pixbuf_get_colorspace(source) != GDK_COLORSPACE_RGB ||
@@ -197,35 +235,9 @@ GdkPixbuf *sstv_compose_image(GdkPixbuf *source, const char *my_call,
   cairo_surface_destroy(scaled_surface);
   draw_station_info(cr, station_info, station_font_size, station_color,
                     TX_HEIGHT - FOOTER_HEIGHT, 0);
-  cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.78);
-  cairo_rectangle(cr, 0, TX_HEIGHT - FOOTER_HEIGHT, TX_WIDTH, FOOTER_HEIGHT);
-  cairo_fill(cr);
-
-  identity = g_strdup_printf("%s DE %s | %s", call_b, call_a, snr);
-  layout = pango_cairo_create_layout(cr);
-  font = pango_font_description_from_string("Sans Bold 10");
-  pango_layout_set_font_description(layout, font);
-  pango_layout_set_width(layout, (TX_WIDTH - 12) * PANGO_SCALE);
-  pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-  pango_layout_set_single_paragraph_mode(layout, TRUE);
-
-  cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 4);
-  pango_layout_set_text(layout, identity, -1);
-  pango_cairo_show_layout(cr, layout);
-
-  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 21);
-  pango_layout_set_text(layout, utc, -1);
-  pango_cairo_show_layout(cr, layout);
-
-  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 38);
-  pango_layout_set_text(layout, text, -1);
-  pango_cairo_show_layout(cr, layout);
+  draw_tx_footer(cr, my_call, their_call, report, utc_text, locator, message);
 
   result = pixbuf_from_cairo_surface(surface);
-  pango_font_description_free(font);
-  g_object_unref(layout);
-  g_free(identity);
   cairo_destroy(cr);
   cairo_surface_destroy(surface);
   g_object_unref(scaled);
@@ -237,21 +249,14 @@ GdkPixbuf *sstv_compose_image(GdkPixbuf *source, const char *my_call,
 
 GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, const char *my_call,
                                     const char *their_call, const char *report,
-                                    const char *utc_text, const char *message,
+                                    const char *utc_text, const char *locator,
+                                    const char *message,
                                     const char *station_info, guint station_font_size,
                                     const GdkRGBA *station_color,
                                     gboolean image_right, GError **error) {
   GdkPixbuf *scaled, *result;
   cairo_surface_t *surface, *scaled_surface;
   cairo_t *cr;
-  PangoLayout *layout;
-  PangoFontDescription *font;
-  char *identity;
-  const char *call_a = (my_call != NULL && *my_call != '\0') ? my_call : "NOCALL";
-  const char *call_b = (their_call != NULL && *their_call != '\0') ? their_call : "CQ";
-  const char *snr = (report != NULL && *report != '\0') ? report : "SNR unavailable";
-  const char *utc = (utc_text != NULL && *utc_text != '\0') ? utc_text : "UTC unknown";
-  const char *text = (message != NULL) ? message : "";
 
   if (source == NULL || !GDK_IS_PIXBUF(source) ||
       gdk_pixbuf_get_colorspace(source) != GDK_COLORSPACE_RGB ||
@@ -300,35 +305,9 @@ GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, const char *my_call,
                     THUMB_MARGIN + THUMB_HEIGHT + THUMB_MARGIN);
 
   // Draw footer with same layout as sstv_compose_image
-  cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.78);
-  cairo_rectangle(cr, 0, TX_HEIGHT - FOOTER_HEIGHT, TX_WIDTH, FOOTER_HEIGHT);
-  cairo_fill(cr);
-
-  identity = g_strdup_printf("%s DE %s | %s", call_b, call_a, snr);
-  layout = pango_cairo_create_layout(cr);
-  font = pango_font_description_from_string("Sans Bold 10");
-  pango_layout_set_font_description(layout, font);
-  pango_layout_set_width(layout, (TX_WIDTH - 12) * PANGO_SCALE);
-  pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-  pango_layout_set_single_paragraph_mode(layout, TRUE);
-
-  cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 4);
-  pango_layout_set_text(layout, identity, -1);
-  pango_cairo_show_layout(cr, layout);
-
-  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 21);
-  pango_layout_set_text(layout, utc, -1);
-  pango_cairo_show_layout(cr, layout);
-
-  cairo_move_to(cr, 6, TX_HEIGHT - FOOTER_HEIGHT + 38);
-  pango_layout_set_text(layout, text, -1);
-  pango_cairo_show_layout(cr, layout);
+  draw_tx_footer(cr, my_call, their_call, report, utc_text, locator, message);
 
   result = pixbuf_from_cairo_surface(surface);
-  pango_font_description_free(font);
-  g_object_unref(layout);
-  g_free(identity);
   cairo_destroy(cr);
   cairo_surface_destroy(surface);
   g_object_unref(scaled);

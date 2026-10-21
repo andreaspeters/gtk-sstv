@@ -86,12 +86,13 @@
   <object class="GtkStringList" id="tx_message_presets_model">
     <items>
       <item translatable="yes">Insert preset…</item>
-      <item translatable="yes">TNX FER QSO</item>
-      <item translatable="yes">TNX FER SSTV QSO 73</item>
+      <item translatable="yes">TNX FOR QSO</item>
+      <item translatable="yes">TNX FOR QSO, 73</item>
+      <item translatable="yes">TNX FOR QSO, PSE QSL 73</item>
       <item translatable="yes">73</item>
       <item translatable="yes">FB SIGS</item>
-      <item translatable="yes">UR RST IS</item>
-      <item translatable="yes">CQ CQ CQ</item>
+      <item translatable="yes">CQ CQ CQ SSTV</item>
+      <item translatable="yes"></item>
     </items>
   </object>
   <object class="GtkAdjustment" id="tx_station_font_size_adjustment">
@@ -1020,12 +1021,30 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkEntry" id="tx_my_call">
-                                    <property name="can-focus">True</property>
-                                    <property name="editable">True</property>
-                                    <property name="sensitive">True</property>
-                                    <property name="placeholder-text" translatable="yes">Your callsign</property>
+                                  <object class="GtkBox" id="tx_callsign_locator_row">
+                                    <property name="orientation">horizontal</property>
+                                    <property name="spacing">6</property>
                                     <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkEntry" id="tx_my_call">
+                                        <property name="can-focus">True</property>
+                                        <property name="editable">True</property>
+                                        <property name="hexpand">True</property>
+                                        <property name="sensitive">True</property>
+                                        <property name="placeholder-text" translatable="yes">Your callsign</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkEntry" id="tx_locator">
+                                        <property name="can-focus">True</property>
+                                        <property name="editable">True</property>
+                                        <property name="max-length">12</property>
+                                        <property name="placeholder-text" translatable="yes">Locator (e.g. JO62QM)</property>
+                                        <property name="width-chars">12</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
                                     <layout>
                                       <property name="column">1</property>
                                       <property name="row">4</property>

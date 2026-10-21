@@ -23,6 +23,7 @@ typedef struct {
   GtkWidget *source_combo;
   GtkWidget *preview;
   GtkWidget *my_call;
+  GtkWidget *locator;
   GtkWidget *their_call;
   GtkWidget *report;
   GtkWidget *message;
@@ -143,6 +144,13 @@ static void callsign_changed(GtkEditable *editable, gpointer user_data) {
   TxDialogState *state = user_data;
   g_key_file_set_string(state->config, "slowrx", "tx_callsign",
                         gtk_editable_get_text(GTK_EDITABLE(editable)));
+}
+
+static void locator_changed(GtkEditable *editable, gpointer user_data) {
+  TxDialogState *state = user_data;
+  g_key_file_set_string(state->config, "slowrx", "tx_locator",
+                        gtk_editable_get_text(editable));
+  if (state->source != NULL) compose_preview(state, NULL);
 }
 
 static void device_changed(GObject *object, GParamSpec *pspec,
@@ -287,8 +295,8 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
                                         entry_text(state->my_call),
                                         entry_text(state->their_call),
                                         entry_text(state->report),
-                                        utc_text, message_text(state),
-                                        station_text, station_font_size,
+                                        utc_text, entry_text(state->locator),
+                                        message_text(state), station_text, station_font_size,
                                         &station_color,
                                         g_strcmp0(position_id, "right") == 0,
                                         &error);
@@ -297,7 +305,8 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
                                   entry_text(state->my_call),
                                   entry_text(state->their_call),
                                   entry_text(state->report),
-                                  utc_text, message_text(state), station_text,
+                                  utc_text, entry_text(state->locator),
+                                  message_text(state), station_text,
                                   station_font_size, &station_color, &error);
   }
   g_free(utc_text);
@@ -831,7 +840,8 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
                              GKeyFile *config) {
   TxDialogState *state;
   GtkWidget *preview_button;
-  gchar *stored_call, *stored_device, *stored_mode, *stored_reply_position;
+  gchar *stored_call, *stored_locator, *stored_device, *stored_mode;
+  gchar *stored_reply_position;
   gchar *stored_message, *stored_station_info, *stored_font_color;
   gint stored_font_size;
   GdkRGBA station_color;
@@ -845,6 +855,7 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   state->mode_combo = GTK_WIDGET(gtk_builder_get_object(builder, "tx_mode_combo"));
   state->reply_position = GTK_WIDGET(gtk_builder_get_object(builder, "tx_reply_position"));
   state->my_call = GTK_WIDGET(gtk_builder_get_object(builder, "tx_my_call"));
+  state->locator = GTK_WIDGET(gtk_builder_get_object(builder, "tx_locator"));
   state->fskid_toggle = GTK_WIDGET(gtk_builder_get_object(builder, "tx_fskid_toggle"));
   state->their_call = GTK_WIDGET(gtk_builder_get_object(builder, "tx_their_call"));
   state->report = GTK_WIDGET(gtk_builder_get_object(builder, "tx_report"));
@@ -861,7 +872,7 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   if (state->panel == NULL || state->source_combo == NULL ||
       state->audio_device == NULL || state->mode_combo == NULL ||
       state->reply_position == NULL || state->my_call == NULL ||
-      state->fskid_toggle == NULL || state->their_call == NULL ||
+      state->locator == NULL || state->fskid_toggle == NULL || state->their_call == NULL ||
       state->report == NULL || state->message == NULL ||
       state->message_presets == NULL || state->station_info == NULL ||
       state->station_font_size == NULL || state->station_color == NULL ||
@@ -876,6 +887,7 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   /* Keep the user-editable TX controls editable even if a Builder default
    * or a parent/container state changes independently. */
   gtk_editable_set_editable(GTK_EDITABLE(state->my_call), TRUE);
+  gtk_editable_set_editable(GTK_EDITABLE(state->locator), TRUE);
   gtk_editable_set_editable(GTK_EDITABLE(state->their_call), TRUE);
   gtk_editable_set_editable(GTK_EDITABLE(state->report), TRUE);
   gtk_editable_set_editable(GTK_EDITABLE(state->message), TRUE);
@@ -934,6 +946,11 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
     gtk_editable_set_text(GTK_EDITABLE(state->my_call), stored_call);
   g_free(stored_call);
   g_signal_connect(state->my_call, "changed", G_CALLBACK(callsign_changed), state);
+  stored_locator = g_key_file_get_string(config, "slowrx", "tx_locator", NULL);
+  if (stored_locator != NULL)
+    gtk_editable_set_text(GTK_EDITABLE(state->locator), stored_locator);
+  g_free(stored_locator);
+  g_signal_connect(state->locator, "changed", G_CALLBACK(locator_changed), state);
 
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(state->fskid_toggle),
                                g_key_file_get_boolean(config, "slowrx", "tx_fskid", NULL));
