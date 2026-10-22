@@ -142,13 +142,15 @@ static void saved_picture_setup(GtkSignalListItemFactory *factory,
                                 GtkListItem *list_item,
                                 gpointer user_data) {
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-  GtkWidget *image = gtk_image_new();
+  GtkWidget *image = gtk_picture_new();
   GtkWidget *label = gtk_label_new(NULL);
   (void)factory;
   (void)user_data;
 
   gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
   gtk_widget_set_halign(label, GTK_ALIGN_CENTER);
+  gtk_picture_set_can_shrink(GTK_PICTURE(image), FALSE);
+  gtk_picture_set_content_fit(GTK_PICTURE(image), GTK_CONTENT_FIT_CONTAIN);
   gtk_box_append(GTK_BOX(box), image);
   gtk_box_append(GTK_BOX(box), label);
   gtk_list_item_set_child(list_item, box);
@@ -168,8 +170,8 @@ static void saved_picture_bind(GtkSignalListItemFactory *factory,
   (void)factory;
   (void)user_data;
 
-  gtk_image_set_from_paintable(GTK_IMAGE(image),
-                               texture != NULL ? GDK_PAINTABLE(texture) : NULL);
+  gtk_picture_set_paintable(GTK_PICTURE(image),
+                            texture != NULL ? GDK_PAINTABLE(texture) : NULL);
   gtk_label_set_text(GTK_LABEL(label), id != NULL ? id : "");
 }
 

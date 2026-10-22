@@ -32,7 +32,7 @@ typedef struct {
   gboolean snr_valid;
 } ReceiveUiUpdate;
 
-#define RECENT_PICTURE_THUMBNAIL_WIDTH 245
+#define RECENT_PICTURE_THUMBNAIL_WIDTH 150
 
 static GdkPixbuf *create_recent_picture_thumbnail(GdkPixbuf *image,
                                                    guint mode) {

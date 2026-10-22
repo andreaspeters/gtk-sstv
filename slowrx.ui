@@ -59,7 +59,6 @@
       <item translatable="yes">Wraase SC-2 180</item>
     </items>
   </object>
-
   <object class="GtkStringList" id="tx_audio_device_model">
     <items>
       <item>default</item>
@@ -193,10 +192,10 @@
                                     <child>
                                       <object class="GtkLabel" id="label_waterfall">
                                         <property name="halign">start</property>
-                                        <property name="wrap">True</property>
-                                        <property name="max-width-chars">100</property>
                                         <property name="label" translatable="yes">Waterfall (100 Hz–5 kHz) · SSTV sync 1200 Hz · image 1500–2300 Hz</property>
+                                        <property name="max-width-chars">100</property>
                                         <property name="visible">True</property>
+                                        <property name="wrap">True</property>
                                       </object>
                                     </child>
                                     <child>
@@ -1384,8 +1383,8 @@
                                   <object class="GtkLabel" id="tx_status">
                                     <property name="halign">start</property>
                                     <property name="hexpand">True</property>
-                                    <property name="wrap">True</property>
                                     <property name="visible">True</property>
+                                    <property name="wrap">True</property>
                                     <layout>
                                       <property name="column">0</property>
                                       <property name="column-span">2</property>
@@ -1445,7 +1444,7 @@
                                     <property name="hexpand">True</property>
                                     <property name="hscroll-policy">natural</property>
                                     <property name="max-columns">4</property>
-                                    <property name="min-columns">2</property>
+                                    <property name="min-columns">4</property>
                                     <property name="vexpand">True</property>
                                     <property name="visible">True</property>
                                     <property name="vscroll-policy">natural</property>
