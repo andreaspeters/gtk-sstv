@@ -9,6 +9,14 @@
 #define ROBOT36_HEIGHT 240
 #define HALF_US_PER_SECOND 2000000LL
 #define PI 3.14159265358979323846
+#define TX_PAUSE_SAMPLES SSTV_SAMPLE_RATE
+#define CW_WPM 20
+#define CW_TONE_HZ 700.0
+#define VIDEO_ID_ROWS 7
+#define VIDEO_ID_COLUMNS 5
+#define VIDEO_ID_ROW_SAMPLES 3072
+#define VIDEO_ID_CENTER_HZ 1500.0
+#define VIDEO_ID_TONE_SPACING_HZ 6.0
 
 static size_t sample_at_half_us(long long half_us) {
   return (size_t)((half_us * SSTV_SAMPLE_RATE + HALF_US_PER_SECOND / 2) /
@@ -122,6 +130,291 @@ gboolean sstv_encode_fskid(const gchar *callsign, SstvPcm *pcm, GError **error) 
 
   g_free(uppercase);
   return TRUE;
+}
+
+static const gchar *morse_code(gchar ch) {
+  static const gchar *const letters[] = {
+    ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....", "..",
+    ".---", "-.-", ".-..", "--", "-.", "---", ".--.", "--.-", ".-.",
+    "...", "-", "..-", "...-", ".--", "-..-", "-.--", "--.."
+  };
+  static const gchar *const digits[] = {
+    "-----", ".----", "..---", "...--", "....-", ".....", "-....",
+    "--...", "---..", "----."
+  };
+  if (ch >= 'A' && ch <= 'Z') return letters[ch - 'A'];
+  if (ch >= '0' && ch <= '9') return digits[ch - '0'];
+  if (ch == '/') return "-..-.";
+  if (ch == '-') return "-....-";
+  return NULL;
+}
+
+gboolean sstv_encode_cw(const gchar *callsign, SstvPcm *pcm, GError **error) {
+  const size_t unit = SSTV_SAMPLE_RATE * 60 / (CW_WPM * 50);
+  gchar *uppercase;
+  size_t call_length, total_units = 0, sample_count, offset = 0, i;
+  double phase = 0.0;
+
+  if (pcm == NULL) {
+    set_error(error, 11, "Missing CW output buffer");
+    return FALSE;
+  }
+  pcm->samples = NULL;
+  pcm->length = 0;
+  if (callsign == NULL) {
+    set_error(error, 12, "Missing CW callsign");
+    return FALSE;
+  }
+  uppercase = g_ascii_strup(callsign, -1);
+  call_length = strlen(uppercase);
+  if (call_length == 0 || call_length > 10) {
+    g_free(uppercase);
+    set_error(error, 13, "CW callsign must contain 1 to 10 characters");
+    return FALSE;
+  }
+  for (i = 0; i < call_length; ++i) {
+    const gchar *code = morse_code(uppercase[i]);
+    size_t j;
+    if (code == NULL) {
+      g_free(uppercase);
+      set_error(error, 14, "CW callsign may contain only letters, digits, '/' or '-'");
+      return FALSE;
+    }
+    for (j = 0; code[j] != '\0'; ++j)
+      total_units += code[j] == '-' ? 3 : 1;
+    if (i + 1 < call_length)
+      total_units += strlen(code) - 1 + 3;
+  }
+  if (total_units > G_MAXSIZE / unit ||
+      total_units * unit > G_MAXSIZE / sizeof(*pcm->samples)) {
+    g_free(uppercase);
+    set_error(error, 15, "CW callsign audio is too large");
+    return FALSE;
+  }
+  sample_count = total_units * unit;
+  pcm->samples = calloc(sample_count, sizeof(*pcm->samples));
+  if (pcm->samples == NULL) {
+    g_free(uppercase);
+    set_error(error, 16, "Unable to allocate CW audio buffer");
+    return FALSE;
+  }
+  pcm->length = sample_count;
+
+  for (i = 0; i < call_length; ++i) {
+    const gchar *code = morse_code(uppercase[i]);
+    size_t j;
+    for (j = 0; code[j] != '\0'; ++j) {
+      size_t tone_units = code[j] == '-' ? 3 : 1;
+      size_t tone_samples = tone_units * unit;
+      write_tone(pcm->samples, offset, offset + tone_samples,
+                 CW_TONE_HZ, &phase);
+      offset += tone_samples;
+      if (code[j + 1] != '\0') offset += unit;
+    }
+    if (i + 1 < call_length) offset += 3 * unit;
+  }
+  g_free(uppercase);
+  return TRUE;
+}
+
+static gboolean video_glyph(gchar ch, guint8 rows[VIDEO_ID_ROWS]) {
+  static const guint8 letters[26][VIDEO_ID_ROWS] = {
+    {0x00,0x0e,0x11,0x1f,0x11,0x11,0x00}, {0x00,0x1e,0x09,0x0e,0x09,0x1e,0x00},
+    {0x00,0x0f,0x10,0x10,0x10,0x0f,0x00}, {0x00,0x1e,0x11,0x11,0x11,0x1e,0x00},
+    {0x00,0x1f,0x10,0x1c,0x10,0x1f,0x00}, {0x00,0x1f,0x10,0x1c,0x10,0x10,0x00},
+    {0x00,0x0f,0x10,0x13,0x11,0x0f,0x00}, {0x00,0x11,0x11,0x1f,0x11,0x11,0x00},
+    {0x00,0x1c,0x08,0x08,0x08,0x1c,0x00}, {0x00,0x01,0x01,0x01,0x11,0x0e,0x00},
+    {0x00,0x11,0x12,0x1c,0x12,0x11,0x00}, {0x00,0x10,0x10,0x10,0x10,0x1f,0x00},
+    {0x00,0x11,0x1b,0x15,0x11,0x11,0x00}, {0x00,0x11,0x19,0x15,0x13,0x11,0x00},
+    {0x00,0x0e,0x11,0x11,0x11,0x0e,0x00}, {0x00,0x1e,0x11,0x1e,0x10,0x10,0x00},
+    {0x00,0x0e,0x11,0x11,0x15,0x0e,0x01}, {0x00,0x1e,0x11,0x1e,0x12,0x11,0x00},
+    {0x00,0x0f,0x10,0x0e,0x01,0x1e,0x00}, {0x00,0x1f,0x04,0x04,0x04,0x04,0x00},
+    {0x00,0x11,0x11,0x11,0x11,0x0e,0x00}, {0x00,0x11,0x12,0x14,0x18,0x10,0x00},
+    {0x00,0x11,0x11,0x15,0x15,0x0a,0x00}, {0x00,0x11,0x0a,0x04,0x0a,0x11,0x00},
+    {0x00,0x11,0x0a,0x04,0x04,0x04,0x00}, {0x00,0x1f,0x02,0x04,0x08,0x1f,0x00}
+  };
+  static const guint8 digits[10][VIDEO_ID_ROWS] = {
+    {0x00,0x0e,0x13,0x15,0x19,0x0e,0x00}, {0x00,0x0c,0x14,0x04,0x04,0x04,0x00},
+    {0x00,0x1c,0x02,0x04,0x08,0x1f,0x00}, {0x00,0x1e,0x01,0x06,0x01,0x1e,0x00},
+    {0x00,0x12,0x12,0x1f,0x02,0x02,0x00}, {0x00,0x1f,0x10,0x1e,0x01,0x1e,0x00},
+    {0x00,0x0e,0x10,0x1e,0x11,0x0e,0x00}, {0x00,0x1f,0x01,0x02,0x04,0x08,0x00},
+    {0x00,0x0e,0x11,0x0e,0x11,0x0e,0x00}, {0x00,0x0e,0x11,0x0f,0x01,0x0e,0x00}
+  };
+  guint row;
+
+  if (ch >= 'A' && ch <= 'Z') {
+    memcpy(rows, letters[ch - 'A'], sizeof(letters[0]));
+    return TRUE;
+  }
+  if (ch >= '0' && ch <= '9') {
+    memcpy(rows, digits[ch - '0'], sizeof(digits[0]));
+    return TRUE;
+  }
+  if (ch == '/') {
+    const guint8 slash[VIDEO_ID_ROWS] = {0x00,0x01,0x02,0x04,0x08,0x10,0x00};
+    memcpy(rows, slash, sizeof(slash));
+    return TRUE;
+  }
+  if (ch == '-') {
+    const guint8 dash[VIDEO_ID_ROWS] = {0x00,0x00,0x00,0x1f,0x00,0x00,0x00};
+    memcpy(rows, dash, sizeof(dash));
+    return TRUE;
+  }
+  for (row = 0; row < VIDEO_ID_ROWS; ++row) rows[row] = 0;
+  return FALSE;
+}
+
+gboolean sstv_encode_video_id(const gchar *callsign, SstvPcm *pcm,
+                              GError **error) {
+  gchar *uppercase;
+  guint8 glyphs[10][VIDEO_ID_ROWS];
+  double tone_increments[10 * VIDEO_ID_COLUMNS];
+  size_t call_length, tone_count = 0, sample_count, row, sample, ch, col;
+
+  if (pcm == NULL) {
+    set_error(error, 17, "Missing VideoID output buffer");
+    return FALSE;
+  }
+  pcm->samples = NULL;
+  pcm->length = 0;
+  if (callsign == NULL) {
+    set_error(error, 18, "Missing VideoID callsign");
+    return FALSE;
+  }
+  uppercase = g_ascii_strup(callsign, -1);
+  call_length = strlen(uppercase);
+  if (call_length == 0 || call_length > G_N_ELEMENTS(glyphs)) {
+    g_free(uppercase);
+    set_error(error, 19, "VideoID callsign must contain 1 to 10 characters");
+    return FALSE;
+  }
+  for (ch = 0; ch < call_length; ++ch) {
+    if (!video_glyph(uppercase[ch], glyphs[ch])) {
+      g_free(uppercase);
+      set_error(error, 20, "VideoID callsign may contain only letters, digits, '/' or '-'");
+      return FALSE;
+    }
+  }
+
+  {
+    size_t cells = call_length * VIDEO_ID_COLUMNS +
+                   (call_length - 1) * 2;
+    double frequency = VIDEO_ID_CENTER_HZ +
+                       VIDEO_ID_TONE_SPACING_HZ * (cells - 1) / 2.0;
+    for (ch = 0; ch < call_length; ++ch) {
+      for (col = 0; col < VIDEO_ID_COLUMNS; ++col) {
+        tone_increments[tone_count++] = 2.0 * PI * frequency / SSTV_SAMPLE_RATE;
+        frequency -= VIDEO_ID_TONE_SPACING_HZ;
+      }
+      if (ch + 1 < call_length) frequency -= 2 * VIDEO_ID_TONE_SPACING_HZ;
+    }
+  }
+
+  sample_count = VIDEO_ID_ROWS * VIDEO_ID_ROW_SAMPLES;
+  pcm->samples = calloc(sample_count, sizeof(*pcm->samples));
+  if (pcm->samples == NULL) {
+    g_free(uppercase);
+    set_error(error, 21, "Unable to allocate VideoID audio buffer");
+    return FALSE;
+  }
+  pcm->length = sample_count;
+  for (row = 0; row < VIDEO_ID_ROWS; ++row) {
+    guint font_row = VIDEO_ID_ROWS - row - 1;
+    gint16 *row_samples = pcm->samples + row * VIDEO_ID_ROW_SAMPLES;
+    for (sample = 0; sample < VIDEO_ID_ROW_SAMPLES; ++sample) {
+      double value = 0.0;
+      size_t tone = 0;
+      for (ch = 0; ch < call_length; ++ch) {
+        for (col = 0; col < VIDEO_ID_COLUMNS; ++col) {
+          if ((glyphs[ch][font_row] & (1U << col)) != 0)
+            value += sin(tone_increments[tone] * sample);
+          ++tone;
+        }
+        tone += ch + 1 < call_length ? 2 : 0;
+      }
+      value = (1.0 - exp(-fabs(value) / 3.0)) * (value >= 0.0 ? 1.0 : -1.0);
+      row_samples[sample] = (gint16)(value * 30000.0);
+    }
+  }
+  g_free(uppercase);
+  return TRUE;
+}
+
+gboolean sstv_build_tx_sequence(const SstvPcm *sstv_pcm,
+                                const gchar *callsign,
+                                gboolean send_fskid,
+                                gboolean send_video_id,
+                                gboolean send_cw,
+                                SstvPcm *tx_pcm,
+                                GError **error) {
+  SstvPcm fskid = { NULL, 0 }, video_id = { NULL, 0 }, cw = { NULL, 0 };
+  const SstvPcm *parts[4];
+  size_t part_count = 0, total = 0, i, offset = 0;
+  gint16 *combined;
+
+  if (tx_pcm == NULL || tx_pcm == sstv_pcm) {
+    set_error(error, 22, "Missing or aliased TX output buffer");
+    return FALSE;
+  }
+  tx_pcm->samples = NULL;
+  tx_pcm->length = 0;
+  if (sstv_pcm == NULL || sstv_pcm->samples == NULL || sstv_pcm->length == 0) {
+    set_error(error, 23, "Missing SSTV audio for transmission sequence");
+    return FALSE;
+  }
+  if (send_fskid && !sstv_encode_fskid(callsign, &fskid, error)) goto failed;
+  if (send_video_id && !sstv_encode_video_id(callsign, &video_id, error)) goto failed;
+  if (send_cw && !sstv_encode_cw(callsign, &cw, error)) goto failed;
+
+  if (send_fskid) parts[part_count++] = &fskid;
+  parts[part_count++] = sstv_pcm;
+  if (send_video_id) parts[part_count++] = &video_id;
+  if (send_cw) parts[part_count++] = &cw;
+  for (i = 0; i < part_count; ++i) {
+    if (parts[i]->length > G_MAXSIZE - total) {
+      set_error(error, 24, "TX sequence audio is too large");
+      goto failed;
+    }
+    total += parts[i]->length;
+  }
+  if (part_count > 1) {
+    size_t pauses = (part_count - 1) * TX_PAUSE_SAMPLES;
+    if (pauses > G_MAXSIZE - total) {
+      set_error(error, 24, "TX sequence audio is too large");
+      goto failed;
+    }
+    total += pauses;
+  }
+  if (total > G_MAXSIZE / sizeof(*combined)) {
+    set_error(error, 24, "TX sequence audio is too large");
+    goto failed;
+  }
+  combined = malloc(total * sizeof(*combined));
+  if (combined == NULL) {
+    set_error(error, 25, "Unable to allocate TX sequence audio buffer");
+    goto failed;
+  }
+  for (i = 0; i < part_count; ++i) {
+    memcpy(combined + offset, parts[i]->samples,
+           parts[i]->length * sizeof(*combined));
+    offset += parts[i]->length;
+    if (i + 1 < part_count) {
+      memset(combined + offset, 0, TX_PAUSE_SAMPLES * sizeof(*combined));
+      offset += TX_PAUSE_SAMPLES;
+    }
+  }
+  tx_pcm->samples = combined;
+  tx_pcm->length = total;
+  free(fskid.samples);
+  free(video_id.samples);
+  free(cw.samples);
+  return TRUE;
+
+failed:
+  free(fskid.samples);
+  free(video_id.samples);
+  free(cw.samples);
+  return FALSE;
 }
 
 gboolean sstv_encode_robot36(GdkPixbuf *image, SstvPcm *pcm, GError **error) {

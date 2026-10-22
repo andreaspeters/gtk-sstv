@@ -1063,7 +1063,7 @@
                                 <child>
                                   <object class="GtkLabel" id="tx_fskid_label">
                                     <property name="halign">start</property>
-                                    <property name="label" translatable="yes">Optional ID (after image)</property>
+                                    <property name="label" translatable="yes">Optional FSKID before SSTV</property>
                                     <property name="visible">True</property>
                                     <layout>
                                       <property name="column">0</property>
@@ -1074,7 +1074,7 @@
                                 <child>
                                   <object class="GtkToggleButton" id="tx_fskid_toggle">
                                     <property name="label" translatable="yes">FSKID</property>
-                                    <property name="tooltip-text" translatable="yes">Append your callsign as FSKID immediately after the image.</property>
+                                    <property name="tooltip-text" translatable="yes">Send your callsign as FSKID before the SSTV image.</property>
                                     <property name="visible">True</property>
                                     <layout>
                                       <property name="column">1</property>
@@ -1275,13 +1275,51 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <object class="GtkLabel" id="tx_post_id_label">
+                                    <property name="halign">start</property>
+                                    <property name="label" translatable="yes">Optional post-SSTV IDs</property>
+                                    <property name="visible">True</property>
+                                    <layout>
+                                      <property name="column">0</property>
+                                      <property name="row">12</property>
+                                    </layout>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkBox" id="tx_post_id_options">
+                                    <property name="orientation">horizontal</property>
+                                    <property name="spacing">12</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkCheckButton" id="tx_video_id_toggle">
+                                        <property name="active">False</property>
+                                        <property name="label" translatable="yes">VideoID (waterfall)</property>
+                                        <property name="tooltip-text" translatable="yes">Draw your callsign in the receiver waterfall after the SSTV image.</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkCheckButton" id="tx_cw_toggle">
+                                        <property name="active">False</property>
+                                        <property name="label" translatable="yes">CW callsign</property>
+                                        <property name="tooltip-text" translatable="yes">Send your callsign in Morse code after the SSTV image (20 WPM, 700 Hz).</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                    <layout>
+                                      <property name="column">1</property>
+                                      <property name="row">12</property>
+                                    </layout>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="GtkButton" id="tx_preview_button">
                                     <property name="halign">start</property>
                                     <property name="label" translatable="yes">Update preview</property>
                                     <property name="visible">True</property>
                                     <layout>
                                       <property name="column">1</property>
-                                      <property name="row">12</property>
+                                      <property name="row">13</property>
                                     </layout>
                                   </object>
                                 </child>
@@ -1306,7 +1344,7 @@
                                     <layout>
                                       <property name="column">2</property>
                                       <property name="row">0</property>
-                                      <property name="row-span">14</property>
+                                      <property name="row-span">15</property>
                                     </layout>
                                   </object>
                                 </child>

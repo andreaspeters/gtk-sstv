@@ -37,6 +37,8 @@ typedef struct {
   GtkWidget *audio_device;
   GPtrArray *audio_device_ids;
   GtkWidget *fskid_toggle;
+  GtkWidget *video_id_toggle;
+  GtkWidget *cw_toggle;
   GtkWidget *mode_combo;
   GtkWidget *reply_position;
   GdkPixbuf *received;
@@ -67,7 +69,9 @@ typedef struct {
   gchar *my_call;
   gchar *audio_device;
   SstvMode mode;
-  gboolean append_id;
+  gboolean send_fskid;
+  gboolean send_video_id;
+  gboolean send_cw;
 } TxPendingTransmission;
 
 static void tx_state_free(gpointer data) {
@@ -166,6 +170,18 @@ static void fskid_toggled(GtkToggleButton *button, gpointer user_data) {
   TxDialogState *state = user_data;
   g_key_file_set_boolean(state->config, "slowrx", "tx_fskid",
                          gtk_toggle_button_get_active(button));
+}
+
+static void video_id_toggled(GtkCheckButton *button, gpointer user_data) {
+  TxDialogState *state = user_data;
+  g_key_file_set_boolean(state->config, "slowrx", "tx_video_id",
+                         gtk_check_button_get_active(button));
+}
+
+static void cw_toggled(GtkCheckButton *button, gpointer user_data) {
+  TxDialogState *state = user_data;
+  g_key_file_set_boolean(state->config, "slowrx", "tx_cw_id",
+                         gtk_check_button_get_active(button));
 }
 
 static const gchar *selected_reply_position_id(TxDialogState *state) {
@@ -441,7 +457,7 @@ static gboolean playback_finished(gpointer data) {
     state->playing = FALSE;
     gtk_widget_set_sensitive(state->send_button, TRUE);
     set_status(state, job->success ?
-               "SSTV audio playback finished." : job->message);
+               "SSTV transmission sequence finished." : job->message);
   }
   free(job->pcm.samples);
   g_free(job->message);
@@ -461,37 +477,6 @@ static gpointer playback_thread(gpointer data) {
   if (error != NULL) g_error_free(error);
   g_idle_add(playback_finished, job);
   return NULL;
-}
-
-static gboolean append_fskid_audio(SstvPcm *image_pcm, const gchar *callsign,
-                                   GError **error) {
-  SstvPcm id_pcm = { NULL, 0 };
-  gint16 *combined;
-  size_t combined_length;
-
-  if (!sstv_encode_fskid(callsign, &id_pcm, error)) return FALSE;
-  if (id_pcm.length > G_MAXSIZE - image_pcm->length ||
-      image_pcm->length + id_pcm.length > G_MAXSIZE / sizeof(*combined)) {
-    free(id_pcm.samples);
-    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-tx"), 1,
-                        "Combined SSTV and FSKID audio buffer is too large");
-    return FALSE;
-  }
-
-  combined_length = image_pcm->length + id_pcm.length;
-  combined = realloc(image_pcm->samples, combined_length * sizeof(*combined));
-  if (combined == NULL) {
-    free(id_pcm.samples);
-    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-tx"), 2,
-                        "Unable to append FSKID audio to SSTV image");
-    return FALSE;
-  }
-  memcpy(combined + image_pcm->length, id_pcm.samples,
-         id_pcm.length * sizeof(*combined));
-  free(id_pcm.samples);
-  image_pcm->samples = combined;
-  image_pcm->length = combined_length;
-  return TRUE;
 }
 
 static gchar *filename_component(const gchar *text) {
@@ -594,6 +579,7 @@ static void transmission_confirm_response(GtkWindow *dialog, gint response,
   GError *error = NULL;
   gchar *saved_path = NULL;
   gchar *status_text;
+  gchar *sequence_text;
 
   if (state == NULL || state->destroyed) {
     gtk_window_destroy(dialog);
@@ -615,13 +601,16 @@ static void transmission_confirm_response(GtkWindow *dialog, gint response,
 
   state->playing = TRUE;
   gtk_widget_set_sensitive(state->send_button, FALSE);
-  status_text = g_strdup_printf(
-      "Saved TX image: %s. Transmitting %s SSTV%s audio to '%s'...",
-      saved_path, sstv_mode_name(pending->mode),
-      pending->append_id ? " with FSKID after image" : "",
+  sequence_text = g_strdup_printf("%sSSTV%s%s",
+      pending->send_fskid ? "FSKID, " : "",
+      pending->send_video_id ? ", VideoID" : "",
+      pending->send_cw ? ", CW" : "");
+  status_text = g_strdup_printf("Saved TX image: %s. Transmitting %s (%s) to '%s'...",
+      saved_path, sstv_mode_name(pending->mode), sequence_text,
       pending->audio_device);
   set_status(state, status_text);
   g_free(status_text);
+  g_free(sequence_text);
   g_free(saved_path);
 
   job = g_new0(TxPlaybackJob, 1);
@@ -678,6 +667,7 @@ static gboolean transmission_confirm_close_request(GtkWindow *dialog,
 static void begin_transmission(TxDialogState *state) {
   GdkPixbuf *composed = NULL;
   SstvPcm pcm = { NULL, 0 };
+  SstvPcm sequence = { NULL, 0 };
   GError *error = NULL;
   GtkWidget *confirm;
   GtkWidget *root_box;
@@ -697,7 +687,10 @@ static void begin_transmission(TxDialogState *state) {
   SstvMode mode;
   gchar *confirm_title;
   gchar *confirm_text;
-  gboolean append_id;
+  gchar *sequence_text;
+  gboolean send_fskid;
+  gboolean send_video_id;
+  gboolean send_cw;
 
   if (*my_call == '\0') {
     set_status(state, "Enter your own callsign before preparing the SSTV image.");
@@ -706,7 +699,9 @@ static void begin_transmission(TxDialogState *state) {
   }
   audio_device = selected_audio_device(state);
   mode = selected_mode(state);
-  append_id = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(state->fskid_toggle));
+  send_fskid = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(state->fskid_toggle));
+  send_video_id = gtk_check_button_get_active(GTK_CHECK_BUTTON(state->video_id_toggle));
+  send_cw = gtk_check_button_get_active(GTK_CHECK_BUTTON(state->cw_toggle));
   if (!compose_preview(state, &composed)) return;
   if (!sstv_encode_mode(composed, mode, &pcm, &error)) {
     set_status(state, error != NULL ? error->message : "SSTV encoding failed.");
@@ -714,21 +709,28 @@ static void begin_transmission(TxDialogState *state) {
     g_object_unref(composed);
     return;
   }
-  if (append_id && !append_fskid_audio(&pcm, my_call, &error)) {
-    set_status(state, error != NULL ? error->message : "FSKID encoding failed.");
+  if (!sstv_build_tx_sequence(&pcm, my_call, send_fskid, send_video_id,
+                              send_cw, &sequence, &error)) {
+    set_status(state, error != NULL ? error->message :
+               "Unable to build the SSTV transmission sequence.");
     g_clear_error(&error);
     free(pcm.samples);
     g_object_unref(composed);
     return;
   }
+  free(pcm.samples);
+  pcm = sequence;
 
-  confirm_title = g_strdup_printf("Ready to send a %s SSTV picture%s?",
-                                  sstv_mode_name(mode),
-                                  append_id ? " with FSKID after image" : "");
+  sequence_text = g_strdup_printf("%sSSTV%s%s",
+      send_fskid ? "FSKID, " : "",
+      send_video_id ? ", VideoID" : "",
+      send_cw ? ", CW" : "");
+  confirm_title = g_strdup_printf("Ready to send a %s SSTV sequence?",
+                                  sstv_mode_name(mode));
   confirm_text = g_strdup_printf(
-      "This plays 44.1 kHz audio on '%s'. %s If that output is connected to a radio, use the matching SSTV mode and frequency and key PTT/VOX only when ready. slowrx does not control PTT.",
-      audio_device != NULL ? audio_device : "default",
-      append_id ? "Your FSKID callsign will follow the image." : "No FSKID will be sent.");
+      "Audio order: %s. A one-second silent pause separates each adjacent segment. VideoID draws the callsign in the waterfall; if enabled, CW is sent at 700 Hz and 20 WPM. This plays 44.1 kHz audio on '%s'. If connected to a radio, use the matching SSTV mode and frequency and key PTT/VOX only when ready. slowrx does not control PTT.",
+      sequence_text,
+      audio_device != NULL ? audio_device : "default");
   confirm = gtk_window_new();
   gtk_window_set_application(GTK_WINDOW(confirm),
                              gtk_window_get_application(state->parent));
@@ -769,6 +771,7 @@ static void begin_transmission(TxDialogState *state) {
 
   g_free(confirm_text);
   g_free(confirm_title);
+  g_free(sequence_text);
   check = gtk_check_button_new_with_label(
       "I have checked the radio, frequency and transmit path");
   gtk_widget_set_margin_top(check, 6);
@@ -802,7 +805,9 @@ static void begin_transmission(TxDialogState *state) {
   pending->my_call = g_strdup(my_call);
   pending->audio_device = g_strdup(audio_device != NULL ? audio_device : "default");
   pending->mode = mode;
-  pending->append_id = append_id;
+  pending->send_fskid = send_fskid;
+  pending->send_video_id = send_video_id;
+  pending->send_cw = send_cw;
   g_object_set_data_full(G_OBJECT(confirm), "tx-pending", pending,
                          tx_pending_transmission_destroy);
   g_signal_connect(confirm, "close-request",
@@ -857,6 +862,8 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   state->my_call = GTK_WIDGET(gtk_builder_get_object(builder, "tx_my_call"));
   state->locator = GTK_WIDGET(gtk_builder_get_object(builder, "tx_locator"));
   state->fskid_toggle = GTK_WIDGET(gtk_builder_get_object(builder, "tx_fskid_toggle"));
+  state->video_id_toggle = GTK_WIDGET(gtk_builder_get_object(builder, "tx_video_id_toggle"));
+  state->cw_toggle = GTK_WIDGET(gtk_builder_get_object(builder, "tx_cw_toggle"));
   state->their_call = GTK_WIDGET(gtk_builder_get_object(builder, "tx_their_call"));
   state->report = GTK_WIDGET(gtk_builder_get_object(builder, "tx_report"));
   state->message = GTK_WIDGET(gtk_builder_get_object(builder, "tx_message"));
@@ -872,7 +879,9 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   if (state->panel == NULL || state->source_combo == NULL ||
       state->audio_device == NULL || state->mode_combo == NULL ||
       state->reply_position == NULL || state->my_call == NULL ||
-      state->locator == NULL || state->fskid_toggle == NULL || state->their_call == NULL ||
+      state->locator == NULL || state->fskid_toggle == NULL ||
+      state->video_id_toggle == NULL || state->cw_toggle == NULL ||
+      state->their_call == NULL ||
       state->report == NULL || state->message == NULL ||
       state->message_presets == NULL || state->station_info == NULL ||
       state->station_font_size == NULL || state->station_color == NULL ||
@@ -955,6 +964,13 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(state->fskid_toggle),
                                g_key_file_get_boolean(config, "slowrx", "tx_fskid", NULL));
   g_signal_connect(state->fskid_toggle, "toggled", G_CALLBACK(fskid_toggled), state);
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(state->video_id_toggle),
+                              g_key_file_get_boolean(config, "slowrx", "tx_video_id", NULL));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(state->cw_toggle),
+                              g_key_file_get_boolean(config, "slowrx", "tx_cw_id", NULL));
+  g_signal_connect(state->video_id_toggle, "toggled",
+                   G_CALLBACK(video_id_toggled), state);
+  g_signal_connect(state->cw_toggle, "toggled", G_CALLBACK(cw_toggled), state);
 
   stored_message = g_key_file_get_string(config, "slowrx", "tx_message", NULL);
   gtk_editable_set_text(GTK_EDITABLE(state->message),

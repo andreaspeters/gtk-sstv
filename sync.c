@@ -6,7 +6,12 @@
 #include <alsa/asoundlib.h>
 
 #include "common.h"
-#include "sync_bounds.h"
+
+gboolean sync_sample_value(const gboolean *samples, gsize count, double index) {
+  if (samples == NULL || index < 0.0 || !(index < (double)count))
+    return FALSE;
+  return samples[(gsize)index];
+}
 
 /* Find the slant angle of the sync singnal and adjust sample rate to cancel it out
  *   Length:  number of PCM samples to process

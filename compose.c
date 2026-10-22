@@ -158,7 +158,7 @@ static void draw_tx_footer(cairo_t *cr, const char *my_call,
   char *identity, *utc_locator;
   const char *call_a = (my_call != NULL && *my_call != '\0') ? my_call : "NOCALL";
   const char *call_b = (their_call != NULL && *their_call != '\0') ? their_call : "CQ";
-  const char *snr = (report != NULL && *report != '\0') ? report : "SNR unavailable";
+  const char *snr = (report != NULL && *report != '\0') ? report : "";
   const char *utc = (utc_text != NULL && *utc_text != '\0') ? utc_text : "UTC unknown";
   const char *loc = (locator != NULL) ? locator : "";
   const char *text = (message != NULL) ? message : "";

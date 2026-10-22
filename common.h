@@ -171,6 +171,7 @@ guchar   clip          (double a);
 void     createGUI     (GtkApplication *application);
 double   deg2rad       (double Deg);
 double   FindSync      (guchar Mode, double Rate, int *Skip, gsize SyncCount);
+gboolean sync_sample_value(const gboolean *samples, gsize count, double index);
 void     GetFSK        (char *dest);
 gboolean GetVideo      (guchar Mode, double Rate, int Skip, gboolean Redraw);
 guchar   GetVIS        ();

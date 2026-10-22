@@ -3,8 +3,21 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define SAMPLE_RATE 44100
+#define CW_UNIT_SAMPLES (SAMPLE_RATE * 60 / 1000)
+
+gboolean sstv_encode_cw(const gchar *callsign, SstvPcm *pcm, GError **error);
+gboolean sstv_encode_video_id(const gchar *callsign, SstvPcm *pcm,
+                              GError **error);
+gboolean sstv_build_tx_sequence(const SstvPcm *sstv_pcm,
+                                const gchar *callsign,
+                                gboolean send_fskid,
+                                gboolean send_video_id,
+                                gboolean send_cw,
+                                SstvPcm *tx_pcm,
+                                GError **error);
 
 static int approx_frequency(const gint16 *samples, size_t start, size_t length) {
   size_t i;
@@ -135,6 +148,132 @@ static int check_fskid(void) {
   return 1;
 }
 
+static int samples_are_zero(const gint16 *samples, size_t start, size_t length) {
+  size_t i;
+  for (i = start; i < start + length; ++i) {
+    if (samples[i] != 0) return 0;
+  }
+  return 1;
+}
+
+static int check_cw_encoding(void) {
+  SstvPcm pcm = { NULL, 0 };
+  GError *error = NULL;
+  size_t unit = CW_UNIT_SAMPLES;
+  int tone_hz;
+
+  if (!sstv_encode_cw("ET", &pcm, &error)) {
+    fprintf(stderr, "CW encoding failed: %s\n",
+            error != NULL ? error->message : "no error detail");
+    if (error != NULL) g_error_free(error);
+    return 0;
+  }
+  tone_hz = approx_frequency(pcm.samples, 100, unit - 200);
+  if (pcm.length != 7 * unit || tone_hz < 660 || tone_hz > 740 ||
+      !samples_are_zero(pcm.samples, unit, 3 * unit)) {
+    fprintf(stderr, "CW tone, timing, or letter spacing is incorrect\n");
+    free(pcm.samples);
+    return 0;
+  }
+  free(pcm.samples);
+
+  if (sstv_encode_cw("BAD!", &pcm, &error) || error == NULL) {
+    fprintf(stderr, "Unsupported CW callsign characters must be rejected\n");
+    if (error != NULL) g_error_free(error);
+    free(pcm.samples);
+    return 0;
+  }
+  g_clear_error(&error);
+  return 1;
+}
+
+static int check_video_id_encoding(void) {
+  SstvPcm pcm = { NULL, 0 };
+  GError *error = NULL;
+  size_t i;
+  gboolean active = FALSE;
+
+  if (!sstv_encode_video_id("N0CALL", &pcm, &error)) {
+    fprintf(stderr, "VideoID encoding failed: %s\n",
+            error != NULL ? error->message : "no error detail");
+    if (error != NULL) g_error_free(error);
+    return 0;
+  }
+  if (pcm.length != 7 * 3072) {
+    fprintf(stderr, "VideoID duration is incorrect (%zu samples)\n", pcm.length);
+    free(pcm.samples);
+    return 0;
+  }
+  for (i = 0; i < pcm.length; ++i) active |= pcm.samples[i] != 0;
+  free(pcm.samples);
+  if (!active) {
+    fprintf(stderr, "VideoID must produce visible waterfall tones\n");
+    return 0;
+  }
+
+  if (sstv_encode_video_id("BAD!", &pcm, &error) || error == NULL) {
+    fprintf(stderr, "Unsupported VideoID characters must be rejected\n");
+    if (error != NULL) g_error_free(error);
+    free(pcm.samples);
+    return 0;
+  }
+  g_clear_error(&error);
+  return 1;
+}
+
+static int check_tx_sequence(gboolean send_fskid,
+                             gboolean send_video_id,
+                             gboolean send_cw) {
+  static const gint16 image_samples[] = { 101, -202, 303 };
+  const SstvPcm image = { (gint16 *)image_samples,
+                          G_N_ELEMENTS(image_samples) };
+  SstvPcm fskid = { NULL, 0 }, video_id = { NULL, 0 };
+  SstvPcm cw = { NULL, 0 }, tx = { NULL, 0 };
+  const SstvPcm *parts[4];
+  GError *error = NULL;
+  size_t offset = 0, expected_length = 0, part_count = 0, i;
+  gboolean ok = 0;
+
+  if (send_fskid && !sstv_encode_fskid("E", &fskid, &error)) goto cleanup;
+  if (send_video_id && !sstv_encode_video_id("E", &video_id, &error)) goto cleanup;
+  if (send_cw && !sstv_encode_cw("E", &cw, &error)) goto cleanup;
+  if (send_fskid) parts[part_count++] = &fskid;
+  parts[part_count++] = &image;
+  if (send_video_id) parts[part_count++] = &video_id;
+  if (send_cw) parts[part_count++] = &cw;
+  for (i = 0; i < part_count; ++i) {
+    if (parts[i]->length > G_MAXSIZE - expected_length) goto cleanup;
+    expected_length += parts[i]->length;
+  }
+  if (part_count > 1) expected_length += (part_count - 1) * SAMPLE_RATE;
+  if (!sstv_build_tx_sequence(&image, "E", send_fskid, send_video_id,
+                              send_cw, &tx, &error))
+    goto cleanup;
+  if (tx.length != expected_length) goto cleanup;
+  for (i = 0; i < part_count; ++i) {
+    if (memcmp(tx.samples + offset, parts[i]->samples,
+               parts[i]->length * sizeof(gint16)) != 0)
+      goto cleanup;
+    offset += parts[i]->length;
+    if (i + 1 < part_count) {
+      if (!samples_are_zero(tx.samples, offset, SAMPLE_RATE)) goto cleanup;
+      offset += SAMPLE_RATE;
+    }
+  }
+  ok = 1;
+
+cleanup:
+  if (!ok)
+    fprintf(stderr, "TX sequence order or one-second gap failed (FSKID=%d, VideoID=%d, CW=%d)\n",
+            send_fskid, send_video_id, send_cw);
+  if (error != NULL) g_error_free(error);
+  free(fskid.samples);
+  free(video_id.samples);
+  free(cw.samples);
+  free(tx.samples);
+  return ok;
+}
+
 int main(void) {
   GdkPixbuf *image;
   SstvPcm pcm = { NULL, 0 };
@@ -203,5 +342,13 @@ int main(void) {
   puts("Martin M1/M2 encoding OK: VIS, timing and RGB scan tones verified");
   if (!check_fskid()) return EXIT_FAILURE;
   puts("FSKID encoding OK: sync, LSB-first tones, callsign and length verified");
+  if (!check_cw_encoding() || !check_video_id_encoding() ||
+      !check_tx_sequence(FALSE, FALSE, FALSE) ||
+      !check_tx_sequence(TRUE, FALSE, FALSE) ||
+      !check_tx_sequence(FALSE, TRUE, FALSE) ||
+      !check_tx_sequence(FALSE, FALSE, TRUE) ||
+      !check_tx_sequence(TRUE, TRUE, TRUE))
+    return EXIT_FAILURE;
+  puts("CW, VideoID, optional ordering and one-second gaps verified");
   return EXIT_SUCCESS;
 }

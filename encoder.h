@@ -31,5 +31,15 @@ const gchar *sstv_mode_name(SstvMode mode);
  *               add 0x20 for ASCII, terminator 0x01.
  */
 gboolean sstv_encode_fskid(const gchar *callsign, SstvPcm *pcm, GError **error);
+gboolean sstv_encode_cw(const gchar *callsign, SstvPcm *pcm, GError **error);
+gboolean sstv_encode_video_id(const gchar *callsign, SstvPcm *pcm,
+                              GError **error);
+gboolean sstv_build_tx_sequence(const SstvPcm *sstv_pcm,
+                                const gchar *callsign,
+                                gboolean send_fskid,
+                                gboolean send_video_id,
+                                gboolean send_cw,
+                                SstvPcm *tx_pcm,
+                                GError **error);
 
 #endif
