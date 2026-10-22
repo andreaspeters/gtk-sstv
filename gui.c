@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <gtk/gtk.h>
 #include <alsa/asoundlib.h>
 #include <math.h>
@@ -11,6 +12,18 @@
 
 #define ADIF_UDP_HOST "127.0.0.1"
 #define ADIF_UDP_PORT 2333
+#define WATERFALL_WIDTH 512
+#define WATERFALL_HEIGHT 120
+#define WATERFALL_MAX_HZ 5000.0
+#define WATERFALL_REFRESH_SAMPLES 4410
+
+typedef struct {
+  guint8 pixels[WATERFALL_WIDTH * 3];
+} WaterfallRow;
+
+static GdkPixbuf *waterfall_pixbuf;
+static double waterfall_hann[1024];
+static guint64 waterfall_sample_count;
 
 static void evt_answer(GtkButton *button, gpointer user_data) {
   GtkNotebook *notebook = GTK_NOTEBOOK(user_data);
@@ -206,6 +219,101 @@ void gui_set_image_pixbuf(GtkWidget *image, GdkPixbuf *pixbuf) {
   g_main_context_invoke(NULL, apply_image_update, update);
 }
 
+static gboolean append_waterfall_row(gpointer user_data) {
+  WaterfallRow *row = user_data;
+  gint rowstride;
+  guchar *pixels;
+
+  if (waterfall_pixbuf == NULL || g_atomic_int_get(&ApplicationStopping))
+    return G_SOURCE_REMOVE;
+
+  rowstride = gdk_pixbuf_get_rowstride(waterfall_pixbuf);
+  pixels = gdk_pixbuf_get_pixels(waterfall_pixbuf);
+  memmove(pixels, pixels + rowstride,
+          (WATERFALL_HEIGHT - 1) * (gsize)rowstride);
+  memcpy(pixels + (WATERFALL_HEIGHT - 1) * rowstride, row->pixels,
+         sizeof(row->pixels));
+  if (gui.image_waterfall != NULL)
+    gui_picture_set_pixbuf(GTK_PICTURE(gui.image_waterfall), waterfall_pixbuf);
+  return G_SOURCE_REMOVE;
+}
+
+void gui_waterfall_init(void) {
+  guint i;
+
+  waterfall_pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8,
+                                    WATERFALL_WIDTH, WATERFALL_HEIGHT);
+  if (waterfall_pixbuf == NULL) return;
+  gdk_pixbuf_fill(waterfall_pixbuf, 0x080c14ff);
+  for (i = 0; i < G_N_ELEMENTS(waterfall_hann); ++i)
+    waterfall_hann[i] = 0.5 * (1.0 - cos(2.0 * G_PI * i / 1023.0));
+  if (gui.image_waterfall != NULL)
+    gui_picture_set_pixbuf(GTK_PICTURE(gui.image_waterfall), waterfall_pixbuf);
+}
+
+void gui_waterfall_update_samples(guint samples_read) {
+  WaterfallRow *row;
+  guint i, x;
+  guchar *pixels;
+
+  if (samples_read == 0 || waterfall_pixbuf == NULL || pcm.Buffer == NULL ||
+      fft.Plan1024 == NULL || g_atomic_int_get(&ApplicationStopping))
+    return;
+
+  waterfall_sample_count += samples_read;
+  if (waterfall_sample_count < WATERFALL_REFRESH_SAMPLES) return;
+  waterfall_sample_count %= WATERFALL_REFRESH_SAMPLES;
+  if (pcm.WindowPtr < 512 || pcm.WindowPtr > BUFLEN - 512) return;
+
+  for (i = 0; i < 1024; ++i)
+    fft.in[i] = pcm.Buffer[pcm.WindowPtr + (gint)i - 512] / 32768.0 *
+                waterfall_hann[i];
+  fftw_execute(fft.Plan1024);
+
+  row = g_new(WaterfallRow, 1);
+  pixels = row->pixels;
+  for (x = 0; x < WATERFALL_WIDTH; ++x) {
+    double frequency = 100.0 + (WATERFALL_MAX_HZ - 100.0) * x /
+                               (WATERFALL_WIDTH - 1.0);
+    guint bin = (guint)(frequency * 1024.0 / 44100.0);
+    double normalized_power = power(fft.out[bin]) / (256.0 * 256.0);
+    double db = normalized_power > 1e-12
+        ? 10.0 * log10(normalized_power) : -120.0;
+    double level = (db + 85.0) / 85.0;
+    guint8 red, green, blue;
+
+    level = fmax(0.0, fmin(1.0, level));
+    if (level < 0.25) {
+      red = 0;
+      green = 0;
+      blue = (guint8)(16.0 + level * 4.0 * 112.0);
+    } else if (level < 0.5) {
+      red = 0;
+      green = (guint8)((level - 0.25) * 4.0 * 255.0);
+      blue = (guint8)(128.0 + (level - 0.25) * 4.0 * 127.0);
+    } else if (level < 0.75) {
+      red = (guint8)((level - 0.5) * 4.0 * 255.0);
+      green = 255;
+      blue = (guint8)(255.0 - (level - 0.5) * 4.0 * 255.0);
+    } else {
+      red = 255;
+      green = (guint8)(255.0 - (level - 0.75) * 4.0 * 255.0);
+      blue = 0;
+    }
+    pixels[3 * x] = red;
+    pixels[3 * x + 1] = green;
+    pixels[3 * x + 2] = blue;
+  }
+
+  g_main_context_invoke_full(NULL, G_PRIORITY_DEFAULT, append_waterfall_row,
+                             row, g_free);
+}
+
+void gui_waterfall_shutdown(void) {
+  g_clear_object(&waterfall_pixbuf);
+  waterfall_sample_count = 0;
+}
+
 void createGUI(GtkApplication *application) {
 
   GtkBuilder *builder;
@@ -236,6 +344,7 @@ void createGUI(GtkApplication *application) {
   gui.image_pwr       = GTK_WIDGET(gtk_builder_get_object(builder,"image_pwr"));
   gui.image_rx        = GTK_WIDGET(gtk_builder_get_object(builder,"image_rx"));
   gui.image_snr       = GTK_WIDGET(gtk_builder_get_object(builder,"image_snr"));
+  gui.image_waterfall = GTK_WIDGET(gtk_builder_get_object(builder,"image_waterfall"));
   gui.label_fskid     = GTK_WIDGET(gtk_builder_get_object(builder,"label_fskid"));
   gui.label_lastmode  = GTK_WIDGET(gtk_builder_get_object(builder,"label_lastmode"));
   gui.label_utc       = GTK_WIDGET(gtk_builder_get_object(builder,"label_utc"));
@@ -386,6 +495,7 @@ void createGUI(GtkApplication *application) {
 
   pixbuf_PWR = gdk_pixbuf_new (GDK_COLORSPACE_RGB, FALSE, 8, 100, 30);
   pixbuf_SNR = gdk_pixbuf_new (GDK_COLORSPACE_RGB, FALSE, 8, 100, 30);
+  gui_waterfall_init();
 
   gtk_drop_down_set_selected(GTK_DROP_DOWN(gui.combo_mode), 0);
   cache_widget_option(gui.tog_rx, GINT_TO_POINTER(GUI_OPTION_RECEIVE));

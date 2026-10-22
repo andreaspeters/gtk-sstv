@@ -56,6 +56,7 @@ struct _GuiObjs {
   GtkWidget *image_pwr;
   GtkWidget *image_rx;
   GtkWidget *image_snr;
+  GtkWidget *image_waterfall;
   GtkWidget *label_fskid;
   GtkWidget *label_lastmode;
   GtkWidget *label_utc;
@@ -182,6 +183,9 @@ void     populateDeviceList ();
 void     readPcm       (gint numsamples);
 void     saveCurrentPic();
 void     setVU         (double *Power, int FFTLen, int WinIdx, gboolean ShowWin);
+void     gui_waterfall_init(void);
+void     gui_waterfall_update_samples(guint samples_read);
+void     gui_waterfall_shutdown(void);
 void     gui_set_image_pixbuf(GtkWidget *image, GdkPixbuf *pixbuf);
 
 void     evt_AbortRx       ();

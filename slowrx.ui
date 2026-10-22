@@ -195,6 +195,23 @@
                                         </child>
                                       </object>
                                     </child>
+                                    <child>
+                                      <object class="GtkLabel" id="label_waterfall">
+                                        <property name="halign">center</property>
+                                        <property name="label" translatable="yes">Waterfall (100 Hz–5 kHz)</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkPicture" id="image_waterfall">
+                                        <property name="can-shrink">True</property>
+                                        <property name="content-fit">fill</property>
+                                        <property name="halign">center</property>
+                                        <property name="height-request">80</property>
+                                        <property name="visible">True</property>
+                                        <property name="width-request">320</property>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                               </object>
@@ -438,6 +455,7 @@
                                             </layout>
                                           </object>
                                         </child>
+
                                       </object>
                                     </child>
                                   </object>

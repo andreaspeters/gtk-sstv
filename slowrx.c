@@ -339,6 +339,7 @@ int main(int argc, char *argv[]) {
   g_clear_object(&pixbuf_disp);
   g_clear_object(&pixbuf_PWR);
   g_clear_object(&pixbuf_SNR);
+  gui_waterfall_shutdown();
   free(StoredLum);
   if (fft.Plan1024 != NULL) fftw_destroy_plan(fft.Plan1024);
   if (fft.Plan2048 != NULL) fftw_destroy_plan(fft.Plan2048);

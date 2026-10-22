@@ -67,6 +67,9 @@ void readPcm(gint numsamples) {
     pcm.WindowPtr -= numsamples;
   }
 
+  if (samplesread > 0)
+    gui_waterfall_update_samples((guint)samplesread);
+
 }
 
 void populateDeviceList() {
