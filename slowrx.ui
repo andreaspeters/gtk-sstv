@@ -216,14 +216,6 @@
                                 </child>
                               </object>
                             </child>
-                            <child type="label">
-                              <object class="GtkLabel" id="label6">
-                                <property name="can-focus">False</property>
-                                <property name="label" translatable="yes">Last picture</property>
-                                <property name="use-markup">True</property>
-                                <property name="visible">True</property>
-                              </object>
-                            </child>
                             <layout>
                               <property name="column">1</property>
                               <property name="column-span">1</property>
@@ -234,6 +226,7 @@
                         </child>
                         <child>
                           <object class="GtkBox" id="rx_metadata_column">
+                            <property name="hexpand">True</property>
                             <property name="orientation">vertical</property>
                             <property name="spacing">10</property>
                             <property name="visible">True</property>
@@ -243,16 +236,11 @@
                                 <property name="hexpand">True</property>
                                 <property name="homogeneous">False</property>
                                 <property name="orientation">vertical</property>
-                                <property name="spacing">8</property>
                                 <property name="visible">True</property>
                                 <child>
                                   <object class="GtkFrame" id="IDFrame">
                                     <property name="can-focus">False</property>
                                     <property name="label-xalign">0</property>
-                                    <property name="margin-bottom">7</property>
-                                    <property name="margin-end">7</property>
-                                    <property name="margin-start">7</property>
-                                    <property name="margin-top">7</property>
                                     <property name="visible">True</property>
                                     <child>
                                       <object class="GtkBox" id="alignment7">
@@ -290,9 +278,6 @@
                                   <object class="GtkFrame" id="UTCFrame">
                                     <property name="can-focus">False</property>
                                     <property name="label-xalign">0</property>
-                                    <property name="margin-bottom">7</property>
-                                    <property name="margin-end">7</property>
-                                    <property name="margin-start">7</property>
                                     <property name="margin-top">7</property>
                                     <property name="visible">True</property>
                                     <child>
@@ -328,9 +313,6 @@
                                   <object class="GtkFrame" id="LastModeFrame">
                                     <property name="can-focus">False</property>
                                     <property name="label-xalign">0</property>
-                                    <property name="margin-bottom">7</property>
-                                    <property name="margin-end">7</property>
-                                    <property name="margin-start">7</property>
                                     <property name="margin-top">7</property>
                                     <property name="visible">True</property>
                                     <child>
@@ -365,20 +347,20 @@
                             </child>
                             <child>
                               <object class="GtkBox">
-                                <property name="margin-top">10</property>
                                 <property name="spacing">8</property>
                                 <child>
                                   <object class="GtkBox">
                                     <child>
                                       <object class="GtkButton" id="button_answer">
                                         <property name="label">Answer</property>
-                                        <property name="margin-start">7</property>
                                       </object>
                                     </child>
                                   </object>
                                 </child>
                                 <child>
                                   <object class="GtkButton" id="button_adif">
+                                    <property name="halign">end</property>
+                                    <property name="hexpand">True</property>
                                     <property name="label">Logging</property>
                                     <property name="margin-start">10</property>
                                   </object>
@@ -455,7 +437,6 @@
                                             </layout>
                                           </object>
                                         </child>
-
                                       </object>
                                     </child>
                                   </object>
@@ -480,7 +461,7 @@
                         <child>
                           <object class="GtkBox" id="ButtonVBox">
                             <property name="can-focus">False</property>
-                            <property name="halign">start</property>
+                            <property name="hexpand">True</property>
                             <property name="orientation">vertical</property>
                             <property name="spacing">10</property>
                             <property name="valign">start</property>
