@@ -1348,6 +1348,18 @@
                                     </layout>
                                   </object>
                                 </child>
+                                <child>
+                                  <object class="GtkButton" id="tx_send_button">
+                                    <property name="halign">end</property>
+                                    <property name="label" translatable="yes">Transmit SSTV...</property>
+                                    <property name="visible">True</property>
+                                    <layout>
+                                      <property name="column">0</property>
+                                      <property name="column-span">2</property>
+                                      <property name="row">13</property>
+                                    </layout>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                             <child>
@@ -1360,17 +1372,6 @@
                                 <property name="margin-top">8</property>
                                 <property name="visible">True</property>
                                 <property name="wrap">True</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkButton" id="tx_send_button">
-                                <property name="halign">end</property>
-                                <property name="label" translatable="yes">Transmit SSTV...</property>
-                                <property name="margin-bottom">8</property>
-                                <property name="margin-end">8</property>
-                                <property name="margin-start">8</property>
-                                <property name="margin-top">8</property>
-                                <property name="visible">True</property>
                               </object>
                             </child>
                           </object>
