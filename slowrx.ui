@@ -939,10 +939,23 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkDropDown" id="tx_source_combo">
+                                  <object class="GtkBox" id="tx_source_controls">
                                     <property name="hexpand">True</property>
-                                    <property name="model">tx_source_model</property>
+                                    <property name="spacing">6</property>
                                     <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkDropDown" id="tx_source_combo">
+                                        <property name="hexpand">True</property>
+                                        <property name="model">tx_source_model</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkButton" id="tx_choose_photo_button">
+                                        <property name="label" translatable="yes">Choose a photo file…</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
                                     <layout>
                                       <property name="column">1</property>
                                       <property name="row">0</property>
@@ -1352,6 +1365,7 @@
                                     <property name="visible">True</property>
                                     <child>
                                       <object class="GtkLabel">
+                                        <property name="halign">end</property>
                                         <property name="label" translatable="yes">&lt;span weight="bold"&gt;Transmit SSTV...&lt;/span&gt;</property>
                                         <property name="use-markup">True</property>
                                         <property name="visible">True</property>
@@ -1364,6 +1378,19 @@
                                       <property name="column">0</property>
                                       <property name="column-span">2</property>
                                       <property name="row">13</property>
+                                    </layout>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="tx_status">
+                                    <property name="halign">start</property>
+                                    <property name="hexpand">True</property>
+                                    <property name="wrap">True</property>
+                                    <property name="visible">True</property>
+                                    <layout>
+                                      <property name="column">0</property>
+                                      <property name="column-span">2</property>
+                                      <property name="row">14</property>
                                     </layout>
                                   </object>
                                 </child>
@@ -1417,9 +1444,11 @@
                                 <child>
                                   <object class="GtkGridView" id="SavedGridView">
                                     <property name="can-focus">True</property>
+                                    <property name="hexpand">True</property>
                                     <property name="hscroll-policy">natural</property>
                                     <property name="max-columns">1</property>
                                     <property name="min-columns">1</property>
+                                    <property name="vexpand">True</property>
                                     <property name="visible">True</property>
                                     <property name="vscroll-policy">natural</property>
                                   </object>

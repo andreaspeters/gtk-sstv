@@ -295,6 +295,7 @@ static void application_activate(GtkApplication *application, gpointer user_data
 
   createGUI(application);
   populateDeviceList();
+  sstv_tx_panel_refresh_audio_devices(gui.tx_panel);
 }
 
 int main(int argc, char *argv[]) {

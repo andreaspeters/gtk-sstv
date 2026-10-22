@@ -21,6 +21,7 @@ typedef struct {
   GtkWidget *panel;
   GtkWindow *parent;
   GtkWidget *source_combo;
+  GtkWidget *choose_photo_button;
   GtkWidget *preview;
   GtkWidget *my_call;
   GtkWidget *locator;
@@ -117,8 +118,10 @@ static void populate_audio_devices(TxDialogState *state,
   int status;
   guint selected = 0;
 
-  names = GTK_STRING_LIST(gtk_drop_down_get_model(
-      GTK_DROP_DOWN(state->audio_device)));
+  /* Build and install a populated model just like the RX device selector. */
+  names = gtk_string_list_new(NULL);
+  gtk_string_list_append(names, "default");
+  g_clear_pointer(&state->audio_device_ids, g_ptr_array_unref);
   state->audio_device_ids = g_ptr_array_new_with_free_func(g_free);
   g_ptr_array_add(state->audio_device_ids, g_strdup("default"));
   while ((status = snd_card_next(&card)) >= 0 && card != -1) {
@@ -130,7 +133,7 @@ static void populate_audio_devices(TxDialogState *state,
       continue;
     }
 
-    playback_device = g_strdup_printf("plughw:%d", card);
+    playback_device = g_strdup_printf("plughw:%d,0", card);
     gtk_string_list_append(names, cardname);
     g_ptr_array_add(state->audio_device_ids, g_strdup(playback_device));
     if (g_strcmp0(saved_device, playback_device) == 0)
@@ -141,7 +144,10 @@ static void populate_audio_devices(TxDialogState *state,
 
   if (g_strcmp0(saved_device, "default") == 0)
     selected = 0;
+  gtk_drop_down_set_model(GTK_DROP_DOWN(state->audio_device),
+                          G_LIST_MODEL(names));
   gtk_drop_down_set_selected(GTK_DROP_DOWN(state->audio_device), selected);
+  g_object_unref(names);
 }
 
 static void callsign_changed(GtkEditable *editable, gpointer user_data) {
@@ -349,25 +355,25 @@ static void reset_source_selection(TxDialogState *state) {
   state->changing_source = FALSE;
 }
 
-static void photo_chooser_response(GObject *source_object,
-                                   GAsyncResult *result,
+static void photo_chooser_response(GtkNativeDialog *dialog, gint response,
                                    gpointer user_data) {
   GtkWidget *panel = GTK_WIDGET(user_data);
   TxDialogState *state = g_object_get_data(G_OBJECT(panel), TX_STATE_KEY);
-  GFile *file;
+  GFile *file = NULL;
   gchar *filename = NULL;
   GdkPixbuf *loaded = NULL;
   GError *error = NULL;
 
-  file = gtk_file_dialog_open_finish(GTK_FILE_DIALOG(source_object), result,
-                                     NULL);
-  if (state != NULL && !state->destroyed && file != NULL) {
+  if (response == GTK_RESPONSE_ACCEPT)
+    file = gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog));
+  if (state != NULL && !state->destroyed && response == GTK_RESPONSE_ACCEPT &&
+      file != NULL) {
     filename = g_file_get_path(file);
     if (filename != NULL)
       loaded = gdk_pixbuf_new_from_file(filename, &error);
     if (loaded == NULL) {
       set_status(state, error != NULL ? error->message :
-                 "Unable to load the selected local image.");
+                 "The selected photo is not a readable local image.");
       reset_source_selection(state);
     } else {
       if (state->source != NULL) g_object_unref(state->source);
@@ -384,6 +390,8 @@ static void photo_chooser_response(GObject *source_object,
   g_clear_object(&loaded);
   g_clear_error(&error);
   g_free(filename);
+  gtk_native_dialog_destroy(dialog);
+  g_object_unref(dialog);
   g_object_unref(panel);
 }
 
@@ -410,26 +418,22 @@ static void add_pixbuf_format_mime_types(GtkFileFilter *filter) {
 }
 
 static void choose_photo(TxDialogState *state) {
-  GtkFileDialog *chooser;
-  GListStore *filters;
+  GtkFileChooserNative *chooser;
   GtkFileFilter *filter;
 
-  chooser = gtk_file_dialog_new();
-  gtk_file_dialog_set_title(chooser, "Choose SSTV photo");
-  gtk_file_dialog_set_accept_label(chooser, "_Open");
-  gtk_file_dialog_set_modal(chooser, TRUE);
+  chooser = gtk_file_chooser_native_new("Choose SSTV photo", state->parent,
+                                        GTK_FILE_CHOOSER_ACTION_OPEN,
+                                        "_Open", "_Cancel");
+  gtk_native_dialog_set_modal(GTK_NATIVE_DIALOG(chooser), TRUE);
   filter = gtk_file_filter_new();
   gtk_file_filter_set_name(filter, "Image files");
   add_pixbuf_format_mime_types(filter);
-  filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
-  g_list_store_append(filters, filter);
-  gtk_file_dialog_set_filters(chooser, G_LIST_MODEL(filters));
-  gtk_file_dialog_set_default_filter(chooser, filter);
-  gtk_file_dialog_open(chooser, state->parent, NULL,
-                       photo_chooser_response, g_object_ref(state->panel));
-  g_object_unref(filters);
+  gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(chooser), filter);
+  gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(chooser), filter);
+  g_signal_connect(chooser, "response", G_CALLBACK(photo_chooser_response),
+                   g_object_ref(state->panel));
+  gtk_native_dialog_show(GTK_NATIVE_DIALOG(chooser));
   g_object_unref(filter);
-  g_object_unref(chooser);
 }
 
 static void source_changed(GObject *object, GParamSpec *pspec,
@@ -448,6 +452,11 @@ static void source_changed(GObject *object, GParamSpec *pspec,
     set_status(state, "Using the most recently received SSTV image.");
     compose_preview(state, NULL);
   }
+}
+
+static void choose_photo_clicked(GtkButton *button, gpointer user_data) {
+  (void)button;
+  choose_photo(user_data);
 }
 
 static gboolean playback_finished(gpointer data) {
@@ -856,6 +865,7 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   state->config = config;
   state->panel = GTK_WIDGET(gtk_builder_get_object(builder, "tx_panel"));
   state->source_combo = GTK_WIDGET(gtk_builder_get_object(builder, "tx_source_combo"));
+  state->choose_photo_button = GTK_WIDGET(gtk_builder_get_object(builder, "tx_choose_photo_button"));
   state->audio_device = GTK_WIDGET(gtk_builder_get_object(builder, "tx_audio_device"));
   state->mode_combo = GTK_WIDGET(gtk_builder_get_object(builder, "tx_mode_combo"));
   state->reply_position = GTK_WIDGET(gtk_builder_get_object(builder, "tx_reply_position"));
@@ -877,6 +887,7 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   state->send_button = GTK_WIDGET(gtk_builder_get_object(builder, "tx_send_button"));
   preview_button = GTK_WIDGET(gtk_builder_get_object(builder, "tx_preview_button"));
   if (state->panel == NULL || state->source_combo == NULL ||
+      state->choose_photo_button == NULL ||
       state->audio_device == NULL || state->mode_combo == NULL ||
       state->reply_position == NULL || state->my_call == NULL ||
       state->locator == NULL || state->fskid_toggle == NULL ||
@@ -925,6 +936,8 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
                              GTK_INVALID_LIST_POSITION);
   g_signal_connect(state->source_combo, "notify::selected",
                    G_CALLBACK(source_changed), state);
+  g_signal_connect(state->choose_photo_button, "clicked",
+                   G_CALLBACK(choose_photo_clicked), state);
 
   stored_device = g_key_file_get_string(config, "slowrx", "tx_device", NULL);
   populate_audio_devices(state, stored_device);
@@ -1007,6 +1020,24 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   g_signal_connect(state->send_button, "clicked", G_CALLBACK(send_clicked), state);
 
   return state->panel;
+}
+
+void sstv_tx_panel_refresh_audio_devices(GtkWidget *panel) {
+  TxDialogState *state;
+  gchar *saved_device;
+
+  if (panel == NULL) return;
+  state = g_object_get_data(G_OBJECT(panel), TX_STATE_KEY);
+  if (state == NULL || state->destroyed) return;
+
+  saved_device = g_key_file_get_string(state->config, "slowrx", "tx_device",
+                                       NULL);
+  g_signal_handlers_block_by_func(state->audio_device,
+                                  G_CALLBACK(device_changed), state);
+  populate_audio_devices(state, saved_device);
+  g_signal_handlers_unblock_by_func(state->audio_device,
+                                    G_CALLBACK(device_changed), state);
+  g_free(saved_device);
 }
 
 static void update_received(TxDialogState *state, GdkPixbuf *received,
