@@ -32,6 +32,17 @@ typedef struct {
   gboolean snr_valid;
 } ReceiveUiUpdate;
 
+#define RECENT_PICTURE_THUMBNAIL_WIDTH 245
+
+static GdkPixbuf *create_recent_picture_thumbnail(GdkPixbuf *image,
+                                                   guint mode) {
+  gint height = (gint)(RECENT_PICTURE_THUMBNAIL_WIDTH /
+                       (double)ModeSpec[mode].ImgWidth *
+                       ModeSpec[mode].NumLines * ModeSpec[mode].LineHeight);
+  return gdk_pixbuf_scale_simple(image, RECENT_PICTURE_THUMBNAIL_WIDTH,
+                                 height, GDK_INTERP_HYPER);
+}
+
 static gboolean apply_receive_ui_update(gpointer data) {
   ReceiveUiUpdate *update = data;
 
@@ -45,8 +56,7 @@ static gboolean apply_receive_ui_update(gpointer data) {
     g_list_store_insert(savedstore, 0, item);
     g_object_unref(item);
   }
-  if (update->received_valid && update->tx_panel != NULL &&
-      update->received != NULL) {
+  if (update->tx_panel != NULL) {
     sstv_tx_panel_set_received(update->tx_panel, update->received,
                                update->callsign, update->snr_db,
                                update->snr_valid);
@@ -222,8 +232,8 @@ void *Listen() {
     HasSync = NULL;
 
     // Add thumbnail to iconview
-    CurrentPic.thumbbuf = gdk_pixbuf_scale_simple (pixbuf_rx, 100,
-        100.0/ModeSpec[CurrentPic.Mode].ImgWidth * ModeSpec[CurrentPic.Mode].NumLines * ModeSpec[CurrentPic.Mode].LineHeight, GDK_INTERP_HYPER);
+    CurrentPic.thumbbuf = create_recent_picture_thumbnail(
+        pixbuf_rx, CurrentPic.Mode);
     queue_receive_ui_update(id);
 
     // Save PNG

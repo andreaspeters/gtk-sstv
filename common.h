@@ -30,6 +30,7 @@ typedef struct _PcmData PcmData;
 struct _PcmData {
   snd_pcm_t *handle;
   gint16    *Buffer;
+  int        Channels;
   int        WindowPtr;
   gboolean   BufferDrop;
 };
@@ -59,6 +60,7 @@ struct _GuiObjs {
   GtkWidget *image_waterfall;
   GtkWidget *label_fskid;
   GtkWidget *label_lastmode;
+  GtkWidget *label_waterfall;
   GtkWidget *label_utc;
   GtkWidget *menuitem_about;
   GtkWidget *menuitem_quit;

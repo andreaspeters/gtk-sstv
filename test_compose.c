@@ -57,6 +57,9 @@ int main(void) {
   GdkRGBA red = {1.0, 0.0, 0.0, 1.0};
   GError *error = NULL;
   GdkPixbuf *source, *large, *small, *reply, *reply_right, *received;
+  GdkPixbuf *fallback_reply, *placeholder, *expected_inset;
+  guchar *expected_pixels;
+  int expected_rowstride, expected_channels, channel;
   int large_red, small_red;
   guchar *pixels;
   int rowstride, channels;
@@ -185,6 +188,58 @@ int main(void) {
     return fail("right reply must preserve the base and overlay the received image", NULL);
   }
 
+  placeholder = gdk_pixbuf_new_from_file("/data/testbild.png", &error);
+  if (placeholder == NULL) {
+    g_object_unref(source);
+    g_object_unref(received);
+    g_object_unref(reply_right);
+    return fail("unable to load reply placeholder", error);
+  }
+  expected_inset = gdk_pixbuf_scale_simple(placeholder, 106, 80,
+                                           GDK_INTERP_BILINEAR);
+  if (expected_inset == NULL) {
+    g_object_unref(source);
+    g_object_unref(received);
+    g_object_unref(reply_right);
+    g_object_unref(placeholder);
+    return fail("unable to scale expected reply placeholder", NULL);
+  }
+
+  fallback_reply = sstv_compose_reply_image(
+      source, NULL, "N0CALL", "", "", "2026-10-20 12:34 UTC", "JO62QM",
+      "TNX FER QSO", "", 14, &red, FALSE, &error);
+  if (fallback_reply == NULL) {
+    g_object_unref(source);
+    g_object_unref(received);
+    g_object_unref(reply_right);
+    g_object_unref(placeholder);
+    g_object_unref(expected_inset);
+    return fail("missing received image must use the testbild placeholder", error);
+  }
+  pixels = gdk_pixbuf_get_pixels(fallback_reply);
+  rowstride = gdk_pixbuf_get_rowstride(fallback_reply);
+  channels = gdk_pixbuf_get_n_channels(fallback_reply);
+  expected_pixels = gdk_pixbuf_get_pixels(expected_inset);
+  expected_rowstride = gdk_pixbuf_get_rowstride(expected_inset);
+  expected_channels = gdk_pixbuf_get_n_channels(expected_inset);
+  for (channel = 0; channel < 3; ++channel) {
+    int actual = pixels[48 * rowstride + 61 * channels + channel];
+    int expected = expected_pixels[40 * expected_rowstride +
+                                   53 * expected_channels + channel];
+    if (abs(actual - expected) > 5) {
+      g_object_unref(source);
+      g_object_unref(received);
+      g_object_unref(reply_right);
+      g_object_unref(fallback_reply);
+      g_object_unref(placeholder);
+      g_object_unref(expected_inset);
+      return fail("missing received image must render testbild.png", NULL);
+    }
+  }
+
+  g_object_unref(fallback_reply);
+  g_object_unref(placeholder);
+  g_object_unref(expected_inset);
   g_object_unref(source);
   g_object_unref(received);
   g_object_unref(reply_right);

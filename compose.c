@@ -256,6 +256,8 @@ GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, GdkPixbuf *received,
                                     const GdkRGBA *station_color,
                                     gboolean image_right, GError **error) {
   GdkPixbuf *base_scaled = NULL, *received_scaled = NULL, *result = NULL;
+  GdkPixbuf *fallback_received = NULL;
+  GdkPixbuf *received_source = received;
   cairo_surface_t *base_surface = NULL, *received_surface = NULL;
   cairo_surface_t *surface = NULL;
   cairo_t *cr = NULL;
@@ -265,14 +267,19 @@ GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, GdkPixbuf *received,
   if (source == NULL || !GDK_IS_PIXBUF(source) ||
       gdk_pixbuf_get_colorspace(source) != GDK_COLORSPACE_RGB ||
       gdk_pixbuf_get_bits_per_sample(source) != 8 ||
-      gdk_pixbuf_get_n_channels(source) < 3 ||
-      received == NULL || !GDK_IS_PIXBUF(received) ||
+      gdk_pixbuf_get_n_channels(source) < 3) {
+    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
+                        1, "Base image must be an 8-bit RGB image");
+    return NULL;
+  }
+
+  if (received == NULL || !GDK_IS_PIXBUF(received) ||
       gdk_pixbuf_get_colorspace(received) != GDK_COLORSPACE_RGB ||
       gdk_pixbuf_get_bits_per_sample(received) != 8 ||
       gdk_pixbuf_get_n_channels(received) < 3) {
-    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
-                        1, "Base and received images must be 8-bit RGB images");
-    return NULL;
+    fallback_received = gdk_pixbuf_new_from_file("testbild.png", error);
+    if (fallback_received == NULL) return NULL;
+    received_source = fallback_received;
   }
 
   base_scaled = gdk_pixbuf_scale_simple(source, TX_WIDTH, TX_HEIGHT,
@@ -282,8 +289,8 @@ GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, GdkPixbuf *received,
                         2, "Unable to scale base image");
     goto cleanup;
   }
-  received_scaled = gdk_pixbuf_scale_simple(received, THUMB_WIDTH, THUMB_HEIGHT,
-                                            GDK_INTERP_BILINEAR);
+  received_scaled = gdk_pixbuf_scale_simple(received_source, THUMB_WIDTH,
+                                            THUMB_HEIGHT, GDK_INTERP_BILINEAR);
   if (received_scaled == NULL) {
     g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
                         2, "Unable to scale received image");
@@ -339,5 +346,6 @@ cleanup:
   if (received_surface != NULL) cairo_surface_destroy(received_surface);
   g_clear_object(&base_scaled);
   g_clear_object(&received_scaled);
+  g_clear_object(&fallback_received);
   return result;
 }

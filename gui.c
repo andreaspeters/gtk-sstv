@@ -19,11 +19,73 @@
 
 typedef struct {
   guint8 pixels[WATERFALL_WIDTH * 3];
+  guchar mode;
+  gshort shift;
+  gchar guide_text[192];
 } WaterfallRow;
 
 static GdkPixbuf *waterfall_pixbuf;
 static double waterfall_hann[1024];
 static guint64 waterfall_sample_count;
+
+static guint frequency_guide_x(double frequency, double minimum,
+                               double maximum, guint width) {
+  if (width == 0 || frequency < minimum || frequency > maximum ||
+      maximum <= minimum)
+    return G_MAXUINT;
+  return (guint)floor((frequency - minimum) * (width - 1) /
+                      (maximum - minimum) + 0.5);
+}
+
+static void draw_frequency_guide_column(guchar *pixels, guint width,
+                                        guint height, guint rowstride,
+                                        guint x, guint8 red, guint8 green,
+                                        guint8 blue) {
+  guint y;
+  if (x >= width) return;
+  for (y = 0; y < height; ++y) {
+    guchar *pixel = pixels + y * rowstride + x * 3;
+    pixel[0] = red;
+    pixel[1] = green;
+    pixel[2] = blue;
+  }
+}
+
+static void draw_frequency_guides(guchar *pixels, guint width, guint height,
+                                  guint rowstride, double minimum,
+                                  double maximum, gint shift) {
+  static const double targets[] = {1200.0, 1500.0, 2300.0};
+  guint i;
+  if (pixels == NULL || width == 0 || height == 0 || maximum <= minimum)
+    return;
+
+  if (shift != 0) {
+    for (i = 0; i < G_N_ELEMENTS(targets); ++i) {
+      guint x = frequency_guide_x(targets[i] + shift, minimum, maximum, width);
+      draw_frequency_guide_column(pixels, width, height, rowstride, x,
+                                  255, 0, 255);
+    }
+  }
+
+  draw_frequency_guide_column(
+      pixels, width, height, rowstride,
+      frequency_guide_x(targets[0], minimum, maximum, width), 0, 225, 255);
+  for (i = 1; i < G_N_ELEMENTS(targets); ++i) {
+    guint x = frequency_guide_x(targets[i], minimum, maximum, width);
+    draw_frequency_guide_column(pixels, width, height, rowstride, x,
+                                255, 210, 0);
+  }
+}
+
+static void format_frequency_guide(gchar *text, gsize text_size, guchar mode,
+                                   gshort shift) {
+  const gchar *mode_name = "Auto";
+  if (mode > UNKNOWN && mode <= W2180 && ModeSpec[mode].ShortName != NULL)
+    mode_name = ModeSpec[mode].ShortName;
+  g_snprintf(text, text_size,
+             "SSTV %s · sync 1200 Hz · image 1500–2300 Hz · audio offset %+d Hz · radio tune: USB %+d / LSB %+d Hz",
+             mode_name, (gint)shift, (gint)shift, -(gint)shift);
+}
 
 static void evt_answer(GtkButton *button, gpointer user_data) {
   GtkNotebook *notebook = GTK_NOTEBOOK(user_data);
@@ -233,6 +295,12 @@ static gboolean append_waterfall_row(gpointer user_data) {
           (WATERFALL_HEIGHT - 1) * (gsize)rowstride);
   memcpy(pixels + (WATERFALL_HEIGHT - 1) * rowstride, row->pixels,
          sizeof(row->pixels));
+  if (gui.label_waterfall != NULL)
+    gtk_label_set_text(GTK_LABEL(gui.label_waterfall), row->guide_text);
+  if (gui.image_waterfall != NULL)
+    gtk_widget_set_tooltip_text(gui.image_waterfall, row->guide_text);
+  if (gui.image_pwr != NULL)
+    gtk_widget_set_tooltip_text(gui.image_pwr, row->guide_text);
   if (gui.image_waterfall != NULL)
     gui_picture_set_pixbuf(GTK_PICTURE(gui.image_waterfall), waterfall_pixbuf);
   return G_SOURCE_REMOVE;
@@ -272,6 +340,9 @@ void gui_waterfall_update_samples(guint samples_read) {
 
   row = g_new(WaterfallRow, 1);
   pixels = row->pixels;
+  row->mode = (guchar)(gui_option_get_integer(GUI_OPTION_MODE_INDEX) + 1);
+  if (row->mode > W2180) row->mode = UNKNOWN;
+  row->shift = CurrentPic.HedrShift;
   for (x = 0; x < WATERFALL_WIDTH; ++x) {
     double frequency = 100.0 + (WATERFALL_MAX_HZ - 100.0) * x /
                                (WATERFALL_WIDTH - 1.0);
@@ -304,6 +375,12 @@ void gui_waterfall_update_samples(guint samples_read) {
     pixels[3 * x + 1] = green;
     pixels[3 * x + 2] = blue;
   }
+
+  draw_frequency_guides(pixels, WATERFALL_WIDTH, 1,
+                        WATERFALL_WIDTH * 3, 100.0,
+                        WATERFALL_MAX_HZ, row->shift);
+  format_frequency_guide(row->guide_text, sizeof(row->guide_text),
+                         row->mode, row->shift);
 
   g_main_context_invoke_full(NULL, G_PRIORITY_DEFAULT, append_waterfall_row,
                              row, g_free);
@@ -347,6 +424,7 @@ void createGUI(GtkApplication *application) {
   gui.image_waterfall = GTK_WIDGET(gtk_builder_get_object(builder,"image_waterfall"));
   gui.label_fskid     = GTK_WIDGET(gtk_builder_get_object(builder,"label_fskid"));
   gui.label_lastmode  = GTK_WIDGET(gtk_builder_get_object(builder,"label_lastmode"));
+  gui.label_waterfall = GTK_WIDGET(gtk_builder_get_object(builder,"label_waterfall"));
   gui.label_utc       = GTK_WIDGET(gtk_builder_get_object(builder,"label_utc"));
 
   gui.spin_shift      = GTK_WIDGET(gtk_builder_get_object(builder,"spin_shift"));
@@ -589,6 +667,9 @@ void setVU (double *Power, int FFTLen, int WinIdx, gboolean ShowWin) {
 
     }
   }
+
+  draw_frequency_guides(pixelsPWR, W, H, rowstridePWR, 0.0, 6000.0,
+                        CurrentPic.HedrShift);
 
   gui_set_image_pixbuf(gui.image_pwr, power_pixbuf);
   gui_set_image_pixbuf(gui.image_snr, snr_pixbuf);

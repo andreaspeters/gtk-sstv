@@ -19,12 +19,28 @@
 void readPcm(gint numsamples) {
 
   int    samplesread, i;
-  gint32 tmp[BUFLEN];  // Holds one or two 16-bit channels, will be ANDed to single channel
+  int    channels = pcm.Channels == 2 ? 2 : 1;
+  int    channel = 0;
+  guint64 left_energy = 0, right_energy = 0;
+  gint16 tmp[BUFLEN * 2];
 
   if (g_atomic_int_get(&ApplicationStopping))
     pthread_exit(NULL);
 
-  samplesread = snd_pcm_readi(pcm.handle, tmp, (pcm.WindowPtr == 0 ? BUFLEN : numsamples));
+  memset(tmp, 0, sizeof(tmp));
+  samplesread = snd_pcm_readi(pcm.handle, tmp,
+                              (pcm.WindowPtr == 0 ? BUFLEN : numsamples));
+
+  // Do not assume the left channel carries the receiver audio.
+  if (channels == 2 && samplesread > 0) {
+    for (i = 0; i < samplesread; ++i) {
+      gint64 left = tmp[2 * i];
+      gint64 right = tmp[2 * i + 1];
+      left_energy += (guint64)(left * left);
+      right_energy += (guint64)(right * right);
+    }
+    if (right_energy > left_energy) channel = 1;
+  }
 
   if (g_atomic_int_get(&ApplicationStopping))
     pthread_exit(NULL);
@@ -56,13 +72,14 @@ void readPcm(gint numsamples) {
   if (pcm.WindowPtr == 0) {
     // Fill buffer on first run
     for (i=0; i<BUFLEN; i++)
-      pcm.Buffer[i] = tmp[i] & 0xffff;
+      pcm.Buffer[i] = tmp[i * channels + channel];
     pcm.WindowPtr = BUFLEN/2;
   } else {
 
     // Move buffer and push samples
     for (i=0; i<BUFLEN-numsamples;      i++) pcm.Buffer[i] = pcm.Buffer[i+numsamples];
-    for (i=BUFLEN-numsamples; i<BUFLEN; i++) pcm.Buffer[i] = tmp[i-(BUFLEN-numsamples)] & 0xffff;
+    for (i=BUFLEN-numsamples; i<BUFLEN; i++)
+      pcm.Buffer[i] = tmp[(i-(BUFLEN-numsamples)) * channels + channel];
 
     pcm.WindowPtr -= numsamples;
   }
@@ -191,6 +208,9 @@ int initPcmDevice(char *wanteddevname) {
       perror("ALSA: Error setting channels.");
       return(-2);
     }
+    pcm.Channels = 1;
+  } else {
+    pcm.Channels = 2;
   }
   if (snd_pcm_hw_params(pcm.handle, hwparams) < 0) {
     perror("ALSA: Error setting HW params.");

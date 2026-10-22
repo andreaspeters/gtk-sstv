@@ -52,6 +52,18 @@ typedef struct {
 
 static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out);
 
+static void set_reply_preview_placeholder(GtkWidget *preview) {
+  GdkPixbuf *placeholder = gdk_pixbuf_new_from_file("testbild.png", NULL);
+  GdkTexture *texture;
+
+  if (placeholder == NULL) return;
+  texture = gui_texture_new_from_pixbuf(placeholder);
+  if (texture != NULL)
+    gtk_picture_set_paintable(GTK_PICTURE(preview), GDK_PAINTABLE(texture));
+  g_clear_object(&texture);
+  g_object_unref(placeholder);
+}
+
 typedef struct {
   GtkWidget *panel;
   gchar *device;
@@ -301,11 +313,6 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
     set_status(state, "Choose a photo file first.");
     return FALSE;
   }
-  if (state->reply_mode && state->received == NULL) {
-    set_status(state, "No received SSTV image is available for the reply inset.");
-    return FALSE;
-  }
-
   utc_text = current_utc_text();
   station_text = station_info_text(state);
   station_font_size = (guint)gtk_spin_button_get_value_as_int(
@@ -435,12 +442,6 @@ static void choose_photo_clicked(GtkButton *button, gpointer user_data) {
 static void reply_image_toggled(GtkCheckButton *button, gpointer user_data) {
   TxDialogState *state = user_data;
   state->reply_mode = gtk_check_button_get_active(button);
-  if (state->reply_mode && state->received == NULL) {
-    state->reply_mode = FALSE;
-    gtk_check_button_set_active(button, FALSE);
-    set_status(state, "No received SSTV image is available for the reply inset.");
-    return;
-  }
   if (state->source == NULL) {
     set_status(state, "Choose a photo file first.");
     return;
@@ -920,7 +921,8 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   g_object_set_data_full(G_OBJECT(state->panel), TX_STATE_KEY, state, tx_state_free);
   g_signal_connect(state->panel, "destroy", G_CALLBACK(panel_destroyed), state);
 
-  gtk_widget_set_sensitive(state->reply_image_toggle, FALSE);
+  gtk_widget_set_sensitive(state->reply_image_toggle, TRUE);
+  set_reply_preview_placeholder(state->preview);
   g_signal_connect(state->choose_photo_button, "clicked",
                    G_CALLBACK(choose_photo_clicked), state);
   g_signal_connect(state->reply_image_toggle, "toggled",
@@ -1033,9 +1035,9 @@ static void update_received(TxDialogState *state, GdkPixbuf *received,
   GdkPixbuf *copy;
   gchar *report;
 
-  if (state == NULL || received == NULL || state->destroyed) return;
-  copy = gdk_pixbuf_copy(received);
-  if (copy == NULL) return;
+  if (state == NULL || state->destroyed) return;
+  copy = received != NULL ? gdk_pixbuf_copy(received) : NULL;
+  if (received != NULL && copy == NULL) return;
 
   g_clear_object(&state->received);
   state->received = copy;
@@ -1072,7 +1074,7 @@ void sstv_tx_panel_set_received(GtkWidget *panel, GdkPixbuf *received,
                                 const char *received_call, double snr_db,
                                 gboolean snr_valid) {
   TxDialogState *state;
-  if (panel == NULL || received == NULL) return;
+  if (panel == NULL) return;
   state = g_object_get_data(G_OBJECT(panel), TX_STATE_KEY);
   update_received(state, received, received_call, snr_db, snr_valid, FALSE);
 }
@@ -1081,7 +1083,7 @@ void sstv_tx_panel_prepare_reply(GtkWidget *panel, GdkPixbuf *received,
                                  const char *received_call, double snr_db,
                                  gboolean snr_valid) {
   TxDialogState *state;
-  if (panel == NULL || received == NULL) return;
+  if (panel == NULL) return;
   state = g_object_get_data(G_OBJECT(panel), TX_STATE_KEY);
   update_received(state, received, received_call, snr_db, snr_valid, TRUE);
 }

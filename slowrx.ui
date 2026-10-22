@@ -192,8 +192,10 @@
                                     </child>
                                     <child>
                                       <object class="GtkLabel" id="label_waterfall">
-                                        <property name="halign">center</property>
-                                        <property name="label" translatable="yes">Waterfall (100 Hz–5 kHz)</property>
+                                        <property name="halign">start</property>
+                                        <property name="wrap">True</property>
+                                        <property name="max-width-chars">100</property>
+                                        <property name="label" translatable="yes">Waterfall (100 Hz–5 kHz) · SSTV sync 1200 Hz · image 1500–2300 Hz</property>
                                         <property name="visible">True</property>
                                       </object>
                                     </child>
@@ -948,8 +950,8 @@
                                       <object class="GtkCheckButton" id="tx_reply_image_toggle">
                                         <property name="active">False</property>
                                         <property name="label" translatable="yes">Reply image</property>
-                                        <property name="sensitive">False</property>
-                                        <property name="tooltip-text" translatable="yes">Include the latest received SSTV image at the selected reply position.</property>
+                                        <property name="sensitive">True</property>
+                                        <property name="tooltip-text" translatable="yes">Include the latest received SSTV image, or testbild.png when none is available.</property>
                                         <property name="visible">True</property>
                                       </object>
                                     </child>
@@ -1433,7 +1435,6 @@
                             <property name="margin-start">10</property>
                             <property name="margin-top">10</property>
                             <property name="visible">True</property>
-                            <property name="width-request">110</property>
                             <child>
                               <object class="GtkScrolledWindow" id="scrolledwindow1">
                                 <property name="can-focus">True</property>
@@ -1443,8 +1444,8 @@
                                     <property name="can-focus">True</property>
                                     <property name="hexpand">True</property>
                                     <property name="hscroll-policy">natural</property>
-                                    <property name="max-columns">1</property>
-                                    <property name="min-columns">1</property>
+                                    <property name="max-columns">4</property>
+                                    <property name="min-columns">2</property>
                                     <property name="vexpand">True</property>
                                     <property name="visible">True</property>
                                     <property name="vscroll-policy">natural</property>
