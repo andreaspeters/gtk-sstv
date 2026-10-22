@@ -109,7 +109,7 @@
   </object>
   <object class="GtkWindow" id="window_main">
     <property name="can-focus">True</property>
-    <property name="default-height">780</property>
+    <property name="default-height">785</property>
     <property name="default-width">1200</property>
     <property name="resizable">True</property>
     <property name="title" translatable="yes">slowrx</property>
@@ -916,17 +916,15 @@
                         <property name="vscrollbar-policy">automatic</property>
                         <child>
                           <object class="GtkBox" id="tx_panel">
+                            <property name="baseline-position">top</property>
+                            <property name="hexpand">True</property>
                             <property name="orientation">vertical</property>
-                            <property name="spacing">8</property>
+                            <property name="vexpand">True</property>
                             <property name="visible">True</property>
                             <child>
                               <object class="GtkGrid" id="tx_grid">
                                 <property name="column-spacing">10</property>
                                 <property name="hexpand">True</property>
-                                <property name="margin-bottom">10</property>
-                                <property name="margin-end">10</property>
-                                <property name="margin-start">10</property>
-                                <property name="margin-top">10</property>
                                 <property name="row-spacing">8</property>
                                 <property name="vexpand">True</property>
                                 <property name="visible">True</property>
@@ -1072,7 +1070,8 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkToggleButton" id="tx_fskid_toggle">
+                                  <object class="GtkCheckButton" id="tx_fskid_toggle">
+                                    <property name="active">False</property>
                                     <property name="label" translatable="yes">FSKID</property>
                                     <property name="tooltip-text" translatable="yes">Send your callsign as FSKID before the SSTV image.</property>
                                     <property name="visible">True</property>
@@ -1351,8 +1350,17 @@
                                 <child>
                                   <object class="GtkButton" id="tx_send_button">
                                     <property name="halign">end</property>
-                                    <property name="label" translatable="yes">Transmit SSTV...</property>
                                     <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkLabel">
+                                        <property name="label" translatable="yes">&lt;span weight="bold"&gt;Transmit SSTV...&lt;/span&gt;</property>
+                                        <property name="use-markup">True</property>
+                                        <property name="visible">True</property>
+                                      </object>
+                                    </child>
+                                    <style>
+                                      <class name="destructive-action"/>
+                                    </style>
                                     <layout>
                                       <property name="column">0</property>
                                       <property name="column-span">2</property>
@@ -1360,18 +1368,6 @@
                                     </layout>
                                   </object>
                                 </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkLabel" id="tx_status">
-                                <property name="halign">start</property>
-                                <property name="label" translatable="yes">No received image available. Choose a photo file.</property>
-                                <property name="margin-bottom">8</property>
-                                <property name="margin-end">8</property>
-                                <property name="margin-start">8</property>
-                                <property name="margin-top">8</property>
-                                <property name="visible">True</property>
-                                <property name="wrap">True</property>
                               </object>
                             </child>
                           </object>

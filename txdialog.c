@@ -166,10 +166,10 @@ static void device_changed(GObject *object, GParamSpec *pspec,
                         selected_audio_device(state));
 }
 
-static void fskid_toggled(GtkToggleButton *button, gpointer user_data) {
+static void fskid_toggled(GtkCheckButton *button, gpointer user_data) {
   TxDialogState *state = user_data;
   g_key_file_set_boolean(state->config, "slowrx", "tx_fskid",
-                         gtk_toggle_button_get_active(button));
+                         gtk_check_button_get_active(button));
 }
 
 static void video_id_toggled(GtkCheckButton *button, gpointer user_data) {
@@ -699,7 +699,7 @@ static void begin_transmission(TxDialogState *state) {
   }
   audio_device = selected_audio_device(state);
   mode = selected_mode(state);
-  send_fskid = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(state->fskid_toggle));
+  send_fskid = gtk_check_button_get_active(GTK_CHECK_BUTTON(state->fskid_toggle));
   send_video_id = gtk_check_button_get_active(GTK_CHECK_BUTTON(state->video_id_toggle));
   send_cw = gtk_check_button_get_active(GTK_CHECK_BUTTON(state->cw_toggle));
   if (!compose_preview(state, &composed)) return;
@@ -961,8 +961,8 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   g_free(stored_locator);
   g_signal_connect(state->locator, "changed", G_CALLBACK(locator_changed), state);
 
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(state->fskid_toggle),
-                               g_key_file_get_boolean(config, "slowrx", "tx_fskid", NULL));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(state->fskid_toggle),
+                              g_key_file_get_boolean(config, "slowrx", "tx_fskid", NULL));
   g_signal_connect(state->fskid_toggle, "toggled", G_CALLBACK(fskid_toggled), state);
   gtk_check_button_set_active(GTK_CHECK_BUTTON(state->video_id_toggle),
                               g_key_file_get_boolean(config, "slowrx", "tx_video_id", NULL));
