@@ -247,58 +247,78 @@ GdkPixbuf *sstv_compose_image(GdkPixbuf *source, const char *my_call,
   return result;
 }
 
-GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, const char *my_call,
+GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, GdkPixbuf *received,
+                                    const char *my_call,
                                     const char *their_call, const char *report,
                                     const char *utc_text, const char *locator,
                                     const char *message,
                                     const char *station_info, guint station_font_size,
                                     const GdkRGBA *station_color,
                                     gboolean image_right, GError **error) {
-  GdkPixbuf *scaled, *result;
-  cairo_surface_t *surface, *scaled_surface;
-  cairo_t *cr;
+  GdkPixbuf *base_scaled = NULL, *received_scaled = NULL, *result = NULL;
+  cairo_surface_t *base_surface = NULL, *received_surface = NULL;
+  cairo_surface_t *surface = NULL;
+  cairo_t *cr = NULL;
+  int thumb_x;
+  int thumb_y = THUMB_MARGIN;
 
   if (source == NULL || !GDK_IS_PIXBUF(source) ||
       gdk_pixbuf_get_colorspace(source) != GDK_COLORSPACE_RGB ||
       gdk_pixbuf_get_bits_per_sample(source) != 8 ||
-      gdk_pixbuf_get_n_channels(source) < 3) {
+      gdk_pixbuf_get_n_channels(source) < 3 ||
+      received == NULL || !GDK_IS_PIXBUF(received) ||
+      gdk_pixbuf_get_colorspace(received) != GDK_COLORSPACE_RGB ||
+      gdk_pixbuf_get_bits_per_sample(received) != 8 ||
+      gdk_pixbuf_get_n_channels(received) < 3) {
     g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
-                        1, "Source must be an 8-bit RGB image");
+                        1, "Base and received images must be 8-bit RGB images");
     return NULL;
   }
 
-  // Keep the received image as a one-third-size inset, not as the canvas background.
-  scaled = gdk_pixbuf_scale_simple(source, THUMB_WIDTH, THUMB_HEIGHT,
-                                   GDK_INTERP_BILINEAR);
-  if (scaled == NULL) {
+  base_scaled = gdk_pixbuf_scale_simple(source, TX_WIDTH, TX_HEIGHT,
+                                        GDK_INTERP_BILINEAR);
+  if (base_scaled == NULL) {
     g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
-                        2, "Unable to scale source image");
-    return NULL;
+                        2, "Unable to scale base image");
+    goto cleanup;
+  }
+  received_scaled = gdk_pixbuf_scale_simple(received, THUMB_WIDTH, THUMB_HEIGHT,
+                                            GDK_INTERP_BILINEAR);
+  if (received_scaled == NULL) {
+    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
+                        2, "Unable to scale received image");
+    goto cleanup;
+  }
+  base_surface = pixbuf_to_cairo_surface(base_scaled);
+  received_surface = pixbuf_to_cairo_surface(received_scaled);
+  if (base_surface == NULL || received_surface == NULL) {
+    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
+                        4, "Unable to convert reply images to Cairo");
+    goto cleanup;
   }
 
-  scaled_surface = pixbuf_to_cairo_surface(scaled);
-  if (scaled_surface == NULL) {
-    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
-                        4, "Unable to convert source image to Cairo");
-    g_object_unref(scaled);
-    return NULL;
-  }
   surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, TX_WIDTH, TX_HEIGHT);
+  if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
+                        5, "Unable to create reply image canvas");
+    goto cleanup;
+  }
   cr = cairo_create(surface);
-  cairo_set_source_rgb(cr, 0.08, 0.12, 0.18);
+  if (cairo_status(cr) != CAIRO_STATUS_SUCCESS) {
+    g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
+                        5, "Unable to create reply image context");
+    goto cleanup;
+  }
+  cairo_set_source_surface(cr, base_surface, 0, 0);
   cairo_paint(cr);
 
-  // Calculate position for thumbnail
-  int thumb_x = image_right ? TX_WIDTH - THUMB_WIDTH - THUMB_MARGIN : THUMB_MARGIN;
-  int thumb_y = THUMB_MARGIN;
+  thumb_x = image_right ? TX_WIDTH - THUMB_WIDTH - THUMB_MARGIN : THUMB_MARGIN;
 
-  // Draw a light border around the inset for contrast with the canvas.
   cairo_set_source_rgb(cr, 0.86, 0.88, 0.92);
   cairo_rectangle(cr, thumb_x - 2, thumb_y - 2, THUMB_WIDTH + 4, THUMB_HEIGHT + 4);
   cairo_fill(cr);
-  cairo_set_source_surface(cr, scaled_surface, thumb_x, thumb_y);
+  cairo_set_source_surface(cr, received_surface, thumb_x, thumb_y);
   cairo_paint(cr);
-  cairo_surface_destroy(scaled_surface);
 
   draw_station_info(cr, station_info, station_font_size, station_color,
                     TX_HEIGHT - FOOTER_HEIGHT,
@@ -308,11 +328,16 @@ GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, const char *my_call,
   draw_tx_footer(cr, my_call, their_call, report, utc_text, locator, message);
 
   result = pixbuf_from_cairo_surface(surface);
-  cairo_destroy(cr);
-  cairo_surface_destroy(surface);
-  g_object_unref(scaled);
   if (result == NULL)
     g_set_error_literal(error, g_quark_from_static_string("slowrx-sstv-compose"),
                         3, "Unable to render image overlay");
+
+cleanup:
+  if (cr != NULL) cairo_destroy(cr);
+  if (surface != NULL) cairo_surface_destroy(surface);
+  if (base_surface != NULL) cairo_surface_destroy(base_surface);
+  if (received_surface != NULL) cairo_surface_destroy(received_surface);
+  g_clear_object(&base_scaled);
+  g_clear_object(&received_scaled);
   return result;
 }

@@ -56,7 +56,7 @@ int main(void) {
   const char *station_text = "OPERATOR: N0CALL\nQTH: TEST CITY\nRIG: 5 W HF";
   GdkRGBA red = {1.0, 0.0, 0.0, 1.0};
   GError *error = NULL;
-  GdkPixbuf *source, *large, *small, *reply, *reply_right;
+  GdkPixbuf *source, *large, *small, *reply, *reply_right, *received;
   int large_red, small_red;
   guchar *pixels;
   int rowstride, channels;
@@ -129,54 +129,64 @@ int main(void) {
   g_object_unref(small);
   g_object_unref(large);
   g_object_unref(source);
-  source = new_source(0xff0000ff);
-  if (source == NULL) return fail("unable to allocate reply source image", NULL);
-
-  reply = sstv_compose_reply_image(source, "N0CALL", "K1ABC", "SNR +12 dB",
-                                   "2026-10-20 12:34 UTC", "JO62QM", "TNX FER QSO",
-                                   station_text, 14, &red, FALSE, &error);
+  source = new_source(0x0000ffff);
+  received = new_source(0xff0000ff);
+  if (source == NULL || received == NULL) {
+    g_clear_object(&source);
+    g_clear_object(&received);
+    return fail("unable to allocate reply images", NULL);
+  }
+  reply = sstv_compose_reply_image(source, received, "N0CALL", "K1ABC",
+                                   "SNR +12 dB", "2026-10-20 12:34 UTC",
+                                   "JO62QM", "TNX FER QSO", "", 14, &red,
+                                   FALSE, &error);
   if (reply == NULL) {
     g_object_unref(source);
+    g_object_unref(received);
     return fail("left reply composition failed", error);
-  }
-  if (gdk_pixbuf_get_width(reply) != IMAGE_WIDTH ||
-      gdk_pixbuf_get_height(reply) != IMAGE_HEIGHT ||
-      count_red_pixels(reply, 96, IMAGE_HEIGHT - 56) < 30) {
-    g_object_unref(source);
-    g_object_unref(reply);
-    return fail("reply image did not retain station text and dimensions", NULL);
   }
   pixels = gdk_pixbuf_get_pixels(reply);
   rowstride = gdk_pixbuf_get_rowstride(reply);
   channels = gdk_pixbuf_get_n_channels(reply);
-  if (pixels[10 * rowstride + 10 * channels] < 200 ||
-      pixels[10 * rowstride + 10 * channels + 1] > 80 ||
-      pixels[10 * rowstride + 250 * channels] > 80) {
+  if (pixels[120 * rowstride + 160 * channels] > 80 ||
+      pixels[120 * rowstride + 160 * channels + 1] > 80 ||
+      pixels[120 * rowstride + 160 * channels + 2] < 180 ||
+      pixels[20 * rowstride + 20 * channels] < 180 ||
+      pixels[20 * rowstride + 20 * channels + 1] > 80 ||
+      pixels[20 * rowstride + 20 * channels + 2] > 80) {
     g_object_unref(source);
+    g_object_unref(received);
     g_object_unref(reply);
-    return fail("reply thumbnail is not isolated in the top-left corner", NULL);
+    return fail("left reply must preserve the base and overlay the received image", NULL);
   }
+  g_object_unref(reply);
 
-  reply_right = sstv_compose_reply_image(source, "N0CALL", "K1ABC", "SNR +12 dB",
-                                         "2026-10-20 12:34 UTC", "JO62QM", "TNX FER QSO",
-                                         "", 14, &red, TRUE, &error);
-  g_object_unref(source);
+  reply_right = sstv_compose_reply_image(source, received, "N0CALL", "K1ABC",
+                                         "SNR +12 dB", "2026-10-20 12:34 UTC",
+                                         "JO62QM", "TNX FER QSO", "", 14, &red,
+                                         TRUE, &error);
   if (reply_right == NULL) {
-    g_object_unref(reply);
+    g_object_unref(source);
+    g_object_unref(received);
     return fail("right reply composition failed", error);
   }
   pixels = gdk_pixbuf_get_pixels(reply_right);
   rowstride = gdk_pixbuf_get_rowstride(reply_right);
   channels = gdk_pixbuf_get_n_channels(reply_right);
-  if (pixels[10 * rowstride + 300 * channels] < 200 ||
-      pixels[10 * rowstride + 300 * channels + 1] > 80 ||
-      pixels[10 * rowstride + 20 * channels] > 80) {
-    g_object_unref(reply);
+  if (pixels[120 * rowstride + 160 * channels] > 80 ||
+      pixels[120 * rowstride + 160 * channels + 1] > 80 ||
+      pixels[120 * rowstride + 160 * channels + 2] < 180 ||
+      pixels[20 * rowstride + 300 * channels] < 180 ||
+      pixels[20 * rowstride + 300 * channels + 1] > 80 ||
+      pixels[20 * rowstride + 300 * channels + 2] > 80) {
+    g_object_unref(source);
+    g_object_unref(received);
     g_object_unref(reply_right);
-    return fail("reply thumbnail is not isolated in the top-right corner", NULL);
+    return fail("right reply must preserve the base and overlay the received image", NULL);
   }
 
-  g_object_unref(reply);
+  g_object_unref(source);
+  g_object_unref(received);
   g_object_unref(reply_right);
   puts("All compose tests passed: validation, multiline color/size, footer, and reply insets.");
   return EXIT_SUCCESS;

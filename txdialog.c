@@ -20,8 +20,8 @@
 typedef struct {
   GtkWidget *panel;
   GtkWindow *parent;
-  GtkWidget *source_combo;
   GtkWidget *choose_photo_button;
+  GtkWidget *reply_image_toggle;
   GtkWidget *preview;
   GtkWidget *my_call;
   GtkWidget *locator;
@@ -45,8 +45,6 @@ typedef struct {
   GdkPixbuf *received;
   GdkPixbuf *source;
   GKeyFile *config;
-  gboolean has_received;
-  gboolean changing_source;
   gboolean reply_mode;
   gboolean playing;
   gboolean destroyed;
@@ -300,7 +298,11 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
   guint station_font_size;
 
   if (state->source == NULL) {
-    set_status(state, "Choose a received picture or photo first.");
+    set_status(state, "Choose a photo file first.");
+    return FALSE;
+  }
+  if (state->reply_mode && state->received == NULL) {
+    set_status(state, "No received SSTV image is available for the reply inset.");
     return FALSE;
   }
 
@@ -313,7 +315,7 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
   gtk_label_set_text(GTK_LABEL(state->utc_label), utc_text);
   if (state->reply_mode) {
     position_id = selected_reply_position_id(state);
-    composed = sstv_compose_reply_image(state->source,
+    composed = sstv_compose_reply_image(state->source, state->received,
                                         entry_text(state->my_call),
                                         entry_text(state->their_call),
                                         entry_text(state->report),
@@ -348,13 +350,6 @@ static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out) 
   return TRUE;
 }
 
-static void reset_source_selection(TxDialogState *state) {
-  state->changing_source = TRUE;
-  gtk_drop_down_set_selected(GTK_DROP_DOWN(state->source_combo),
-                             state->has_received ? 0 : GTK_INVALID_LIST_POSITION);
-  state->changing_source = FALSE;
-}
-
 static void photo_chooser_response(GtkNativeDialog *dialog, gint response,
                                    gpointer user_data) {
   GtkWidget *panel = GTK_WIDGET(user_data);
@@ -374,17 +369,13 @@ static void photo_chooser_response(GtkNativeDialog *dialog, gint response,
     if (loaded == NULL) {
       set_status(state, error != NULL ? error->message :
                  "The selected photo is not a readable local image.");
-      reset_source_selection(state);
     } else {
       if (state->source != NULL) g_object_unref(state->source);
       state->source = loaded;
       loaded = NULL;
-      state->reply_mode = FALSE;
       set_status(state, "Photo loaded. Use Preview to check the composed SSTV image.");
       compose_preview(state, NULL);
     }
-  } else if (state != NULL && !state->destroyed) {
-    reset_source_selection(state);
   }
   g_clear_object(&file);
   g_clear_object(&loaded);
@@ -436,27 +427,25 @@ static void choose_photo(TxDialogState *state) {
   g_object_unref(filter);
 }
 
-static void source_changed(GObject *object, GParamSpec *pspec,
-                           gpointer user_data) {
-  TxDialogState *state = user_data;
-  guint selected;
-  (void)pspec;
-  if (state->changing_source) return;
-  selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(object));
-  if (selected == 1) {
-    choose_photo(state);
-  } else if (selected == 0 && state->has_received) {
-    state->reply_mode = FALSE;
-    if (state->source != NULL) g_object_unref(state->source);
-    state->source = g_object_ref(state->received);
-    set_status(state, "Using the most recently received SSTV image.");
-    compose_preview(state, NULL);
-  }
-}
-
 static void choose_photo_clicked(GtkButton *button, gpointer user_data) {
   (void)button;
   choose_photo(user_data);
+}
+
+static void reply_image_toggled(GtkCheckButton *button, gpointer user_data) {
+  TxDialogState *state = user_data;
+  state->reply_mode = gtk_check_button_get_active(button);
+  if (state->reply_mode && state->received == NULL) {
+    state->reply_mode = FALSE;
+    gtk_check_button_set_active(button, FALSE);
+    set_status(state, "No received SSTV image is available for the reply inset.");
+    return;
+  }
+  if (state->source == NULL) {
+    set_status(state, "Choose a photo file first.");
+    return;
+  }
+  compose_preview(state, NULL);
 }
 
 static gboolean playback_finished(gpointer data) {
@@ -864,8 +853,8 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   state->parent = parent;
   state->config = config;
   state->panel = GTK_WIDGET(gtk_builder_get_object(builder, "tx_panel"));
-  state->source_combo = GTK_WIDGET(gtk_builder_get_object(builder, "tx_source_combo"));
   state->choose_photo_button = GTK_WIDGET(gtk_builder_get_object(builder, "tx_choose_photo_button"));
+  state->reply_image_toggle = GTK_WIDGET(gtk_builder_get_object(builder, "tx_reply_image_toggle"));
   state->audio_device = GTK_WIDGET(gtk_builder_get_object(builder, "tx_audio_device"));
   state->mode_combo = GTK_WIDGET(gtk_builder_get_object(builder, "tx_mode_combo"));
   state->reply_position = GTK_WIDGET(gtk_builder_get_object(builder, "tx_reply_position"));
@@ -886,8 +875,8 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   state->status = GTK_WIDGET(gtk_builder_get_object(builder, "tx_status"));
   state->send_button = GTK_WIDGET(gtk_builder_get_object(builder, "tx_send_button"));
   preview_button = GTK_WIDGET(gtk_builder_get_object(builder, "tx_preview_button"));
-  if (state->panel == NULL || state->source_combo == NULL ||
-      state->choose_photo_button == NULL ||
+  if (state->panel == NULL || state->choose_photo_button == NULL ||
+      state->reply_image_toggle == NULL ||
       state->audio_device == NULL || state->mode_combo == NULL ||
       state->reply_position == NULL || state->my_call == NULL ||
       state->locator == NULL || state->fskid_toggle == NULL ||
@@ -931,13 +920,11 @@ GtkWidget *sstv_tx_panel_new(GtkBuilder *builder, GtkWindow *parent,
   g_object_set_data_full(G_OBJECT(state->panel), TX_STATE_KEY, state, tx_state_free);
   g_signal_connect(state->panel, "destroy", G_CALLBACK(panel_destroyed), state);
 
-  /* Prevent the initial model selection from opening the file chooser. */
-  gtk_drop_down_set_selected(GTK_DROP_DOWN(state->source_combo),
-                             GTK_INVALID_LIST_POSITION);
-  g_signal_connect(state->source_combo, "notify::selected",
-                   G_CALLBACK(source_changed), state);
+  gtk_widget_set_sensitive(state->reply_image_toggle, FALSE);
   g_signal_connect(state->choose_photo_button, "clicked",
                    G_CALLBACK(choose_photo_clicked), state);
+  g_signal_connect(state->reply_image_toggle, "toggled",
+                   G_CALLBACK(reply_image_toggled), state);
 
   stored_device = g_key_file_get_string(config, "slowrx", "tx_device", NULL);
   populate_audio_devices(state, stored_device);
@@ -1045,23 +1032,14 @@ static void update_received(TxDialogState *state, GdkPixbuf *received,
                             gboolean snr_valid, gboolean prepare_reply) {
   GdkPixbuf *copy;
   gchar *report;
-  guint source_index;
-  gboolean use_received;
 
   if (state == NULL || received == NULL || state->destroyed) return;
   copy = gdk_pixbuf_copy(received);
   if (copy == NULL) return;
 
-  source_index = gtk_drop_down_get_selected(GTK_DROP_DOWN(state->source_combo));
-  use_received = prepare_reply || source_index != 1 || state->source == NULL;
-  if (use_received && state->source != NULL) {
-    g_object_unref(state->source);
-    state->source = NULL;
-  }
-  if (state->received != NULL) g_object_unref(state->received);
+  g_clear_object(&state->received);
   state->received = copy;
-  state->has_received = TRUE;
-  if (use_received) state->source = g_object_ref(state->received);
+  gtk_widget_set_sensitive(state->reply_image_toggle, TRUE);
 
   gtk_editable_set_text(GTK_EDITABLE(state->their_call),
                         received_call != NULL ? received_call : "");
@@ -1072,23 +1050,22 @@ static void update_received(TxDialogState *state, GdkPixbuf *received,
 
   if (prepare_reply) {
     gchar *configured_message;
-    state->reply_mode = TRUE;
     configured_message = g_key_file_get_string(state->config, "slowrx",
                                                 "tx_message", NULL);
     gtk_editable_set_text(GTK_EDITABLE(state->message),
                           configured_message != NULL ? configured_message
                                                      : "TNX FER SSTV QSO 73");
     g_free(configured_message);
+    gtk_check_button_set_active(GTK_CHECK_BUTTON(state->reply_image_toggle),
+                                TRUE);
   }
 
-  if (use_received) {
-    state->changing_source = TRUE;
-    gtk_drop_down_set_selected(GTK_DROP_DOWN(state->source_combo), 0);
-    state->changing_source = FALSE;
-  }
-  compose_preview(state, NULL);
+  if (state->source != NULL)
+    compose_preview(state, NULL);
   if (prepare_reply)
-    set_status(state, "Reply image ready. Review the preview and transmit when ready.");
+    set_status(state, state->source != NULL
+        ? "Reply image ready. Review the preview and transmit when ready."
+        : "Reply image selected. Choose a photo file for the base image.");
 }
 
 void sstv_tx_panel_set_received(GtkWidget *panel, GdkPixbuf *received,
