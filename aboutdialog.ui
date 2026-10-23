@@ -3,7 +3,7 @@
   <requires lib="gtk" version="4.0"/>
   <object class="GtkAboutDialog" id="window_about">
     <property name="resizable">False</property>
-    <property name="program-name">slowrx</property>
+    <property name="program-name">sstv</property>
     <property name="version">0.01 alpha</property>
     <property name="copyright" translatable="yes">
 Oona Räisänen OH2EIQ (oona@kapsi.fi)

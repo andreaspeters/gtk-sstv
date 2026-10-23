@@ -106,7 +106,7 @@
     <property name="default-height">785</property>
     <property name="default-width">1200</property>
     <property name="resizable">True</property>
-    <property name="title" translatable="yes">slowrx</property>
+    <property name="title" translatable="yes">sstv</property>
     <child>
       <object class="GtkBox" id="MainBox">
         <property name="can-focus">False</property>

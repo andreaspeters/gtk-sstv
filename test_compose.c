@@ -188,7 +188,7 @@ int main(void) {
     return fail("right reply must preserve the base and overlay the received image", NULL);
   }
 
-  placeholder = gdk_pixbuf_new_from_file("/data/testbild.png", &error);
+  placeholder = gdk_pixbuf_new_from_file("./testbild.png", &error);
   if (placeholder == NULL) {
     g_object_unref(source);
     g_object_unref(received);

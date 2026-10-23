@@ -36,7 +36,7 @@ And, obviously:
 
 ## Running
 
-`./slowrx`
+`./sstv`
 
 ## Screenshots
 

@@ -8,9 +8,9 @@ OFLAGS = -O3
 
 OBJECTS = common.o modespec.o gui.o video.o vis.o sync.o pcm.o fsk.o slowrx.o encoder.o compose.o txaudio.o txdialog.o adifudp.o
 
-all: slowrx
+all: sstv
 
-slowrx: $(OBJECTS)
+sstv: $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(GTKLIBS) -lfftw3 -lgthread-2.0 -lasound -lm -lpthread
 
 %.o: %.c common.h
@@ -118,4 +118,4 @@ test-recent-pictures:
 	result=$$?; rm -f "$$tmp"; exit $$result
 
 clean:
-	rm -f slowrx $(OBJECTS)
+	rm -f sstv $(OBJECTS)
