@@ -420,6 +420,9 @@ void gui_waterfall_shutdown(void) {
 void createGUI(GtkApplication *application) {
 
   GtkBuilder *builder;
+  GdkPixbuf *app_logo;
+  GdkTexture *app_logo_texture;
+  GError *icon_error = NULL;
   GtkWidget  *notebook;
   GtkGesture *image_click;
   GtkNoSelection *saved_selection;
@@ -466,6 +469,21 @@ void createGUI(GtkApplication *application) {
   gui.tog_slant       = GTK_WIDGET(gtk_builder_get_object(builder,"tog_slant"));
   gui.window_about    = GTK_WIDGET(gtk_builder_get_object(builder,"window_about"));
   gui.window_main     = GTK_WIDGET(gtk_builder_get_object(builder,"window_main"));
+
+  app_logo = gdk_pixbuf_new_from_resource("/org/sstv/sstv.png", &icon_error);
+  if (app_logo != NULL) {
+    app_logo_texture = gui_texture_new_from_pixbuf(app_logo);
+    if (app_logo_texture != NULL) {
+      gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(gui.window_about),
+                                GDK_PAINTABLE(app_logo_texture));
+      g_object_unref(app_logo_texture);
+    }
+    g_object_unref(app_logo);
+  } else {
+    g_warning("Unable to load application icon resource: %s",
+              icon_error != NULL ? icon_error->message : "unknown error");
+    g_clear_error(&icon_error);
+  }
 
   gtk_window_set_application(GTK_WINDOW(gui.window_main), application);
   gtk_window_set_application(GTK_WINDOW(gui.window_about), application);

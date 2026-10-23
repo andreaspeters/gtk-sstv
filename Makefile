@@ -6,7 +6,7 @@ GTKLIBS   = `pkg-config --libs gtk4`
 
 OFLAGS = -O3
 
-OBJECTS = common.o modespec.o gui.o video.o vis.o sync.o pcm.o fsk.o slowrx.o encoder.o compose.o txaudio.o txdialog.o adifudp.o
+OBJECTS = common.o modespec.o gui.o video.o vis.o sync.o pcm.o fsk.o slowrx.o encoder.o compose.o txaudio.o txdialog.o adifudp.o sstv-resources.o
 
 all: sstv
 
@@ -29,6 +29,12 @@ txdialog.o: txdialog.c txdialog.h compose.h encoder.h txaudio.h
 	$(CC) $(CFLAGS) $(GTKCFLAGS) $(OFLAGS) -c -o $@ $<
 
 adifudp.o: adifudp.c adifudp.h
+	$(CC) $(CFLAGS) $(GTKCFLAGS) $(OFLAGS) -c -o $@ $<
+
+sstv-resources.c: sstv.gresource.xml sstv.png
+	glib-compile-resources --generate-source --target=$@ --sourcedir=. $<
+
+sstv-resources.o: sstv-resources.c
 	$(CC) $(CFLAGS) $(GTKCFLAGS) $(OFLAGS) -c -o $@ $<
 
 TEST_BUILD_DIR ?= /data/build-nix
@@ -118,4 +124,11 @@ test-recent-pictures:
 	result=$$?; rm -f "$$tmp"; exit $$result
 
 clean:
-	rm -f sstv $(OBJECTS)
+	rm -f sstv $(OBJECTS) sstv-resources.c
+
+PREFIX ?= /usr/local
+.PHONY: install
+install: sstv
+	install -Dm755 sstv "$(DESTDIR)$(PREFIX)/bin/sstv"
+	install -Dm644 sstv.png "$(DESTDIR)$(PREFIX)/share/icons/hicolor/512x512/apps/sstv.png"
+	install -Dm644 org.sstv.SSTV.desktop "$(DESTDIR)$(PREFIX)/share/applications/org.sstv.SSTV.desktop"

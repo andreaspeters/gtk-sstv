@@ -316,7 +316,7 @@ int main(int argc, char *argv[]) {
   gsize config_length;
   int status;
 
-  application = gtk_application_new("org.slowrx.SlowRx",
+  application = gtk_application_new("org.sstv.SSTV",
                                     G_APPLICATION_DEFAULT_FLAGS);
   g_signal_connect(application, "activate",
                    G_CALLBACK(application_activate), NULL);
