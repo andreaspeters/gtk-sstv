@@ -45,5 +45,5 @@ make
 
 ## Screenshots
 
-![clipboard_20261021091125.bmp](assets/vx_images/clipboard_20261021091125.bmp)
-![clipboard_20261021091312.bmp](assets/vx_images/clipboard_20261021091312.bmp)
+![clipboard_20261023114108.bmp](vx_images/clipboard_20261023114108.bmp)
+![clipboard_20261023114308.bmp](vx_images/clipboard_20261023114308.bmp)
