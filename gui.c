@@ -114,6 +114,12 @@ static void cache_widget_option(GtkWidget *widget, gpointer user_data) {
   }
 }
 
+static void cache_dropdown_option(GObject *object, GParamSpec *pspec,
+                                  gpointer user_data) {
+  (void)pspec;
+  cache_widget_option(GTK_WIDGET(object), user_data);
+}
+
 static void app_quit_action(GSimpleAction *action, GVariant *parameter,
                             gpointer user_data) {
   (void)action;
@@ -550,7 +556,8 @@ void createGUI(GtkApplication *application) {
                    GINT_TO_POINTER(GUI_OPTION_SAVE));
   g_signal_connect(gui.tog_adapt, "toggled", G_CALLBACK(cache_widget_option),
                    GINT_TO_POINTER(GUI_OPTION_ADAPTIVE));
-  g_signal_connect(gui.combo_mode, "notify::selected", G_CALLBACK(cache_widget_option),
+  g_signal_connect(gui.combo_mode, "notify::selected",
+                   G_CALLBACK(cache_dropdown_option),
                    GINT_TO_POINTER(GUI_OPTION_MODE_INDEX));
   g_signal_connect(gui.spin_shift, "value-changed", G_CALLBACK(cache_widget_option),
                    GINT_TO_POINTER(GUI_OPTION_SHIFT));
