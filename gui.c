@@ -28,6 +28,24 @@ static GdkPixbuf *waterfall_pixbuf;
 static double waterfall_hann[1024];
 static guint64 waterfall_sample_count;
 
+static void draw_waterfall(GtkDrawingArea *area, cairo_t *cr,
+                           int width, int height, gpointer user_data) {
+  int image_width, image_height;
+
+  (void)area;
+  (void)user_data;
+  if (waterfall_pixbuf == NULL || width <= 0 || height <= 0) return;
+  image_width = gdk_pixbuf_get_width(waterfall_pixbuf);
+  image_height = gdk_pixbuf_get_height(waterfall_pixbuf);
+  if (image_width <= 0 || image_height <= 0) return;
+
+  cairo_save(cr);
+  cairo_scale(cr, width / (double)image_width, height / (double)image_height);
+  gdk_cairo_set_source_pixbuf(cr, waterfall_pixbuf, 0, 0);
+  cairo_paint(cr);
+  cairo_restore(cr);
+}
+
 static guint frequency_guide_x(double frequency, double minimum,
                                double maximum, guint width) {
   if (width == 0 || frequency < minimum || frequency > maximum ||
@@ -310,7 +328,7 @@ static gboolean append_waterfall_row(gpointer user_data) {
   if (gui.image_pwr != NULL)
     gtk_widget_set_tooltip_text(gui.image_pwr, row->guide_text);
   if (gui.image_waterfall != NULL)
-    gui_picture_set_pixbuf(GTK_PICTURE(gui.image_waterfall), waterfall_pixbuf);
+    gtk_widget_queue_draw(gui.image_waterfall);
   return G_SOURCE_REMOVE;
 }
 
@@ -324,7 +342,7 @@ void gui_waterfall_init(void) {
   for (i = 0; i < G_N_ELEMENTS(waterfall_hann); ++i)
     waterfall_hann[i] = 0.5 * (1.0 - cos(2.0 * G_PI * i / 1023.0));
   if (gui.image_waterfall != NULL)
-    gui_picture_set_pixbuf(GTK_PICTURE(gui.image_waterfall), waterfall_pixbuf);
+    gtk_widget_queue_draw(gui.image_waterfall);
 }
 
 void gui_waterfall_update_samples(guint samples_read) {
@@ -430,6 +448,9 @@ void createGUI(GtkApplication *application) {
   gui.image_rx        = GTK_WIDGET(gtk_builder_get_object(builder,"image_rx"));
   gui.image_snr       = GTK_WIDGET(gtk_builder_get_object(builder,"image_snr"));
   gui.image_waterfall = GTK_WIDGET(gtk_builder_get_object(builder,"image_waterfall"));
+  if (GTK_IS_DRAWING_AREA(gui.image_waterfall))
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(gui.image_waterfall),
+                                   draw_waterfall, NULL, NULL);
   gui.label_fskid     = GTK_WIDGET(gtk_builder_get_object(builder,"label_fskid"));
   gui.label_lastmode  = GTK_WIDGET(gtk_builder_get_object(builder,"label_lastmode"));
   gui.label_waterfall = GTK_WIDGET(gtk_builder_get_object(builder,"label_waterfall"));

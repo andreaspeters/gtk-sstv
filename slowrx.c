@@ -80,8 +80,9 @@ static void queue_receive_ui_update(const gchar *id) {
   ReceiveUiUpdate *update = g_new0(ReceiveUiUpdate, 1);
   update->thumbnail = CurrentPic.thumbbuf != NULL
       ? g_object_ref(CurrentPic.thumbbuf) : NULL;
-  update->received = CurrentPic.ReceivedValid && pixbuf_rx != NULL
-      ? g_object_ref(pixbuf_rx) : NULL;
+  /* ReceivedValid describes SSTV/QSO validity, not whether pixels were
+   * decoded. Keep partial or noise-only images available for reply images. */
+  update->received = pixbuf_rx != NULL ? g_object_ref(pixbuf_rx) : NULL;
   update->tx_panel = gui.tx_panel != NULL ? g_object_ref(gui.tx_panel) : NULL;
   update->id = g_strdup(id != NULL ? id : "");
   update->callsign = g_strdup(CurrentPic.RemoteCall);

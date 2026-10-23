@@ -199,13 +199,20 @@
                                       </object>
                                     </child>
                                     <child>
-                                      <object class="GtkPicture" id="image_waterfall">
-                                        <property name="can-shrink">True</property>
-                                        <property name="content-fit">fill</property>
-                                        <property name="halign">center</property>
-                                        <property name="height-request">80</property>
+                                      <object class="GtkBox" id="waterfall_container">
+                                        <property name="can-focus">False</property>
+                                        <property name="hexpand">True</property>
+                                        <property name="vexpand">False</property>
                                         <property name="visible">True</property>
-                                        <property name="width-request">320</property>
+                                        <child>
+                                          <object class="GtkDrawingArea" id="image_waterfall">
+                                            <property name="content-height">80</property>
+                                            <property name="content-width">320</property>
+                                            <property name="hexpand">True</property>
+                                            <property name="valign">start</property>
+                                            <property name="visible">True</property>
+                                          </object>
+                                        </child>
                                       </object>
                                     </child>
                                   </object>
@@ -367,7 +374,6 @@
                               <object class="GtkFrame" id="frame_levels">
                                 <property name="can-focus">False</property>
                                 <property name="label-xalign">0</property>
-                                <property name="vexpand">True</property>
                                 <property name="visible">True</property>
                                 <child>
                                   <object class="GtkBox" id="alignment6">
@@ -383,7 +389,7 @@
                                         <property name="column-spacing">4</property>
                                         <property name="hexpand">True</property>
                                         <property name="row-spacing">4</property>
-                                        <property name="vexpand">True</property>
+                                        <property name="valign">start</property>
                                         <property name="visible">True</property>
                                         <child>
                                           <object class="GtkLabel" id="label10">
@@ -411,8 +417,9 @@
                                           <object class="GtkPicture" id="image_pwr">
                                             <property name="can-focus">False</property>
                                             <property name="content-fit">fill</property>
+                                            <property name="height-request">150</property>
                                             <property name="hexpand">True</property>
-                                            <property name="vexpand">True</property>
+                                            <property name="valign">baseline</property>
                                             <property name="visible">True</property>
                                             <layout>
                                               <property name="column">1</property>
@@ -424,8 +431,9 @@
                                           <object class="GtkPicture" id="image_snr">
                                             <property name="can-focus">False</property>
                                             <property name="content-fit">fill</property>
+                                            <property name="height-request">60</property>
                                             <property name="hexpand">True</property>
-                                            <property name="vexpand">True</property>
+                                            <property name="valign">baseline</property>
                                             <property name="visible">True</property>
                                             <layout>
                                               <property name="column">1</property>
@@ -535,6 +543,7 @@
                                             <property name="can-focus">True</property>
                                             <property name="has-tooltip">True</property>
                                             <property name="label" translatable="yes">Abort</property>
+                                            <property name="limit-events">True</property>
                                             <property name="receives-default">True</property>
                                             <property name="sensitive">False</property>
                                             <property name="tooltip-markup" translatable="yes">Stop video decoding [Esc]</property>
@@ -595,6 +604,7 @@
                                         <child>
                                           <object class="GtkButton" id="button_clear">
                                             <property name="can-focus">True</property>
+                                            <property name="hexpand">True</property>
                                             <property name="label" translatable="yes">Clear image</property>
                                             <property name="receives-default">True</property>
                                             <property name="sensitive">False</property>
