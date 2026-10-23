@@ -3,3 +3,10 @@ rx
 rx-lum
 *.o
 sstv
+/build/
+/build-nix/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/CTestTestfile.cmake
+/Testing/

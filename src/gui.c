@@ -429,8 +429,8 @@ void createGUI(GtkApplication *application) {
   GtkListItemFactory *saved_factory;
 
   builder = gtk_builder_new();
-  gtk_builder_add_from_file(builder, "slowrx.ui",      NULL);
-  gtk_builder_add_from_file(builder, "aboutdialog.ui", NULL);
+  gtk_builder_add_from_resource(builder, "/org/sstv/slowrx.ui", NULL);
+  gtk_builder_add_from_resource(builder, "/org/sstv/aboutdialog.ui", NULL);
   
   gui.button_abort    = GTK_WIDGET(gtk_builder_get_object(builder,"button_abort"));
   gui.button_adif     = GTK_WIDGET(gtk_builder_get_object(builder,"button_adif"));

@@ -277,7 +277,7 @@ GdkPixbuf *sstv_compose_reply_image(GdkPixbuf *source, GdkPixbuf *received,
       gdk_pixbuf_get_colorspace(received) != GDK_COLORSPACE_RGB ||
       gdk_pixbuf_get_bits_per_sample(received) != 8 ||
       gdk_pixbuf_get_n_channels(received) < 3) {
-    fallback_received = gdk_pixbuf_new_from_file("testbild.png", error);
+    fallback_received = gdk_pixbuf_new_from_resource("/org/sstv/testbild.png", error);
     if (fallback_received == NULL) return NULL;
     received_source = fallback_received;
   }

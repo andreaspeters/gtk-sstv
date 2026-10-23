@@ -1,7 +1,7 @@
-# SSTV - Slowrx
+# SSTV for Linux
 
 
-Slowrx is an SSTV encoder/decoder for Linux.
+This is a SSTV encoder/decoder for Linux.
 
 Original created by Oona Räisänen (OH2EIQ [at] sral.fi). I've added TX.
 
@@ -9,7 +9,7 @@ http://windytan.github.io/slowrx/
 
 ## Features
 
-- Support for a multitude of modes (see `modespec.c` for a list)
+- Support for a multitude of modes (see `src/modespec.c` for a list)
 - Detect frequency-shifted signals – no need to fine-tune the radio
 - Automatic slant correction, also manual adjustments are simple
 - Adaptive noise reduction
@@ -32,7 +32,12 @@ And, obviously:
 
 ## Compiling
 
-`make`
+```sh
+mkdir build
+cd build
+cmake ..
+make
+```
 
 ## Running
 
@@ -40,5 +45,5 @@ And, obviously:
 
 ## Screenshots
 
-![clipboard_20261021091125.bmp](vx_images/clipboard_20261021091125.bmp)
-![clipboard_20261021091312.bmp](vx_images/clipboard_20261021091312.bmp)
+![clipboard_20261021091125.bmp](assets/vx_images/clipboard_20261021091125.bmp)
+![clipboard_20261021091312.bmp](assets/vx_images/clipboard_20261021091312.bmp)

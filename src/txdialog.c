@@ -53,7 +53,8 @@ typedef struct {
 static gboolean compose_preview(TxDialogState *state, GdkPixbuf **composed_out);
 
 static void set_reply_preview_placeholder(GtkWidget *preview) {
-  GdkPixbuf *placeholder = gdk_pixbuf_new_from_file("testbild.png", NULL);
+  GdkPixbuf *placeholder = gdk_pixbuf_new_from_resource(
+      "/org/sstv/testbild.png", NULL);
   GdkTexture *texture;
 
   if (placeholder == NULL) return;

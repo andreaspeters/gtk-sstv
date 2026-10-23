@@ -22,6 +22,7 @@ The specific use of AI varies by project and is limited to the areas listed for
 each project:
 
 - Migration from GTK3 to GTK4
+- Migration GNUMake to CMake
 
 ## Workflow and Quality Assurance
 

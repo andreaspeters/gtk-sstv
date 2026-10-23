@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/sstv">
+    <file alias="sstv.png">assets/sstv.png</file>
+    <file alias="testbild.png">assets/testbild.png</file>
+    <file alias="aboutdialog.ui">src/aboutdialog.ui</file>
+    <file alias="prefs.ui">src/prefs.ui</file>
+    <file alias="slowrx.ui">src/slowrx.ui</file>
+  </gresource>
+</gresources>
